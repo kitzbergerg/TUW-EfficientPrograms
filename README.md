@@ -1,7 +1,8 @@
 # Setup
 
 [Install Rust](https://www.rust-lang.org/tools/install)  
-Add target: `rustup target add x86_64-unknown-linux-musl`
+Add target: `rustup target add x86_64-unknown-linux-musl`  
+Add rust src (required for nightly musl): `rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu`
 
 Download dataset and extract into `data` directory.
 
@@ -10,7 +11,7 @@ Download dataset and extract into `data` directory.
 Commands to benchmark on g0. (scp only works like this if you have ssh setup with config)
 
 ```sh
-cargo build --release --target=x86_64-unknown-linux-musl
+cargo build -Zbuild-std --release --target=x86_64-unknown-linux-musl
 scp ./target/x86_64-unknown-linux-musl/release/TUW-EP g0.complang.tuwien.ac.at:~
 
 ssh g0.complang.tuwien.ac.at

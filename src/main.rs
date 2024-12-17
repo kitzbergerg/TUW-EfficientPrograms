@@ -1,6 +1,7 @@
 use fxhash::FxHashMap;
 use memmap::Mmap;
 use memmap::MmapOptions;
+use smallvec::SmallVec;
 use std::fs::File;
 use std::io::stdout;
 use std::io::BufWriter;
@@ -13,6 +14,7 @@ use std::io::Write;
 // d.csv 1-2 c.csv
 
 type CsvField<'a> = &'a [u8];
+type SV<T> = [T; 8];
 
 fn open_reader(file: &str) -> Mmap {
     let file = File::open(file).unwrap();
@@ -30,10 +32,10 @@ fn stream_data<'a>(reader: &'a Mmap) -> impl Iterator<Item = (CsvField<'a>, CsvF
 }
 
 fn join<'a, const N0: usize, const N1: usize>(
-    left: FxHashMap<CsvField<'a>, Vec<[CsvField<'a>; N0]>>,
+    left: FxHashMap<CsvField<'a>, SmallVec<SV<[CsvField<'a>; N0]>>>,
     right: impl Iterator<Item = (CsvField<'a>, CsvField<'a>)>,
     new_key: usize,
-) -> FxHashMap<CsvField<'a>, Vec<[CsvField<'a>; N1]>> {
+) -> FxHashMap<CsvField<'a>, SmallVec<SV<[CsvField<'a>; N1]>>> {
     let mut result = FxHashMap::default();
     right
         .filter_map(|(key, value)| left.get(key).map(|rows| (rows, value)))
@@ -48,14 +50,17 @@ fn join<'a, const N0: usize, const N1: usize>(
                 .for_each(|row| {
                     result
                         .entry(row[new_key])
-                        .or_insert_with(Vec::new)
+                        .or_insert_with(SmallVec::<SV<_>>::new_const)
                         .push(row)
                 });
         });
     result
 }
 
-fn write_output<W: Write>(data: &FxHashMap<&[u8], Vec<[&[u8]; 5]>>, writer: &mut BufWriter<W>) {
+fn write_output<W: Write>(
+    data: &FxHashMap<&[u8], SmallVec<SV<[&[u8]; 5]>>>,
+    writer: &mut BufWriter<W>,
+) {
     data.values()
         .map(IntoIterator::into_iter)
         .flatten()
@@ -81,7 +86,9 @@ fn main() {
 
     let mut reader = open_reader(&args[1]);
     stream_data(&mut reader).for_each(|(key, value)| {
-        map.entry(key).or_insert_with(Vec::new).push([key, value]);
+        map.entry(key)
+            .or_insert_with(SmallVec::<SV<_>>::new_const)
+            .push([key, value]);
     });
 
     let mut reader = open_reader(&args[2]);
