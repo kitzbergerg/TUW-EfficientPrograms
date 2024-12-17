@@ -19,17 +19,17 @@ fn open_reader(file: &str) -> Mmap {
     unsafe { MmapOptions::new().map(&file).unwrap() }
 }
 
-fn read<'a>(reader: &'a Mmap) -> impl Iterator<Item = (CsvField<'a>, CsvField<'a>)> {
+fn stream_data<'a>(reader: &'a Mmap) -> impl Iterator<Item = (CsvField<'a>, CsvField<'a>)> {
     reader
-        .split(|b| b == &b'\n')
-        .filter(|row| row.len() > 0)
+        .split(|&b| b == b'\n')
+        .filter(|row| !row.is_empty())
         .map(|row| {
-            let mut iter = row.split(|b| b == &b',');
+            let mut iter = row.split(|&b| b == b',');
             (iter.next().unwrap(), iter.next().unwrap())
         })
 }
 
-fn hash_join<'a, const N0: usize, const N1: usize>(
+fn join<'a, const N0: usize, const N1: usize>(
     left: FxHashMap<CsvField<'a>, Vec<[CsvField<'a>; N0]>>,
     right: impl Iterator<Item = (CsvField<'a>, CsvField<'a>)>,
     new_key: usize,
@@ -78,27 +78,21 @@ fn write_output<W: Write>(data: &FxHashMap<&[u8], Vec<[&[u8]; 5]>>, writer: &mut
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    let mut map = FxHashMap::default();
 
     let mut reader = open_reader(&args[1]);
-    let mut map = FxHashMap::default();
-    let a = read(&mut reader).collect::<Vec<_>>();
-    for (key, value) in a.iter() {
-        map.entry(*key)
-            .or_insert_with(Vec::new)
-            .push([*key, *value]);
-    }
+    stream_data(&mut reader).for_each(|(key, value)| {
+        map.entry(key).or_insert_with(Vec::new).push([key, value]);
+    });
 
     let mut reader = open_reader(&args[2]);
-    let b = read(&mut reader);
-    let map = hash_join::<2, 3>(map, b, 0);
+    let map = join::<2, 3>(map, stream_data(&mut reader), 0);
 
     let mut reader = open_reader(&args[3]);
-    let c = read(&mut reader);
-    let map = hash_join::<3, 4>(map, c, 3);
+    let map = join::<3, 4>(map, stream_data(&mut reader), 3);
 
     let mut reader = open_reader(&args[4]);
-    let d = read(&mut reader);
-    let map = hash_join::<4, 5>(map, d, 0);
+    let map = join::<4, 5>(map, stream_data(&mut reader), 0);
 
     // Write output
     let stdout = stdout();
