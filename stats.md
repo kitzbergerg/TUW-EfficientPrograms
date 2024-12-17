@@ -84,5 +84,15 @@
 
       42.038223000 seconds user
        8.217397000 seconds sys
+```
 
+# stream join
+
+```
+   188,417,728,589      cycles
+
+      49.339059871 seconds time elapsed
+
+      42.746668000 seconds user
+       6.573949000 seconds sys
 ```

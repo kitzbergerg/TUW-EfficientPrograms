@@ -1,5 +1,7 @@
+use csv::Reader;
 use csv::ReaderBuilder;
 use fxhash::FxHashMap;
+use std::fs::File;
 use std::io::stdout;
 use std::io::BufWriter;
 use std::io::Write;
@@ -10,40 +12,38 @@ use std::io::Write;
 //             1
 // d.csv 1-2 c.csv
 
-fn read(file: &str) -> Vec<(Vec<u8>, Vec<u8>)> {
+fn open_reader(file: &str) -> Reader<File> {
     ReaderBuilder::new()
         .has_headers(false)
         .from_path(file)
         .unwrap()
-        .into_byte_records()
-        .map(Result::unwrap)
-        .map(|result| {
-            (
-                result.get(0).unwrap().to_vec(),
-                result.get(1).unwrap().to_vec(),
-            )
-        })
-        .collect()
+}
+
+fn read<'a>(reader: &'a mut Reader<File>) -> impl 'a + Iterator<Item = (Vec<u8>, Vec<u8>)> {
+    reader.byte_records().map(Result::unwrap).map(|result| {
+        (
+            result.get(0).unwrap().to_vec(),
+            result.get(1).unwrap().to_vec(),
+        )
+    })
 }
 
 fn hash_join<'a>(
-    left: &FxHashMap<&'a [u8], Vec<Vec<&'a [u8]>>>,
-    right: &FxHashMap<&'a [u8], Vec<&'a [u8]>>,
+    left: FxHashMap<&'a [u8], Vec<Vec<&'a [u8]>>>,
+    right: impl Iterator<Item = (&'a [u8], &'a [u8])>,
     new_key: usize,
 ) -> FxHashMap<&'a [u8], Vec<Vec<&'a [u8]>>> {
     let mut result = FxHashMap::default();
-    for (key, left_rows) in left {
-        if let Some(right_rows) = right.get(key) {
-            for left_row in left_rows {
-                for right_row in right_rows {
-                    let mut combined = left_row.to_vec();
-                    combined.push(right_row);
-                    result
-                        .entry(combined[new_key])
-                        .or_insert_with(Vec::new)
-                        .push(combined);
-                }
-            }
+    for (key, value) in right {
+        if let Some(left_rows) = left.get(key) {
+            let mut left_rows_copy = left_rows.clone();
+            left_rows_copy.iter_mut().for_each(|row| row.push(value));
+            left_rows_copy.into_iter().for_each(|row| {
+                result
+                    .entry(row[new_key])
+                    .or_insert_with(Vec::new)
+                    .push(row)
+            });
         }
     }
     result
@@ -71,42 +71,26 @@ fn write_output<W: Write>(data: &FxHashMap<&[u8], Vec<Vec<&[u8]>>>, writer: &mut
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    let mut a = FxHashMap::default();
-    let a_vec = read(&args[1]);
-    for (key, value) in a_vec.iter() {
-        a.entry(key.as_slice())
+    let mut reader = open_reader(&args[1]);
+    let mut map = FxHashMap::default();
+    let a = read(&mut reader).collect::<Vec<_>>();
+    for (key, value) in a.iter() {
+        map.entry(key.as_slice())
             .or_insert_with(Vec::new)
             .push(vec![key.as_slice(), value.as_slice()]);
     }
 
-    let mut b = FxHashMap::default();
-    let b_vec = read(&args[2]);
-    for (key, value) in b_vec.iter() {
-        b.entry(key.as_slice())
-            .or_insert_with(Vec::new)
-            .push(value.as_slice());
-    }
+    let mut reader = open_reader(&args[2]);
+    let b = read(&mut reader).collect::<Vec<_>>();
+    let map = hash_join(map, b.iter().map(|(k, v)| (k.as_slice(), v.as_slice())), 0);
 
-    let mut c = FxHashMap::default();
-    let c_vec = read(&args[3]);
-    for (key, value) in c_vec.iter() {
-        c.entry(key.as_slice())
-            .or_insert_with(Vec::new)
-            .push(value.as_slice());
-    }
+    let mut reader = open_reader(&args[3]);
+    let c = read(&mut reader).collect::<Vec<_>>();
+    let map = hash_join(map, c.iter().map(|(k, v)| (k.as_slice(), v.as_slice())), 3);
 
-    let mut d = FxHashMap::default();
-    let d_vec = read(&args[4]);
-    for (key, value) in d_vec.iter() {
-        d.entry(key.as_slice())
-            .or_insert_with(Vec::new)
-            .push(value.as_slice());
-    }
-
-    // Perform joins
-    let map = hash_join(&a, &b, 0);
-    let map = hash_join(&map, &c, 3);
-    let map = hash_join(&map, &d, 0);
+    let mut reader = open_reader(&args[4]);
+    let d = read(&mut reader).collect::<Vec<_>>();
+    let map = hash_join(map, d.iter().map(|(k, v)| (k.as_slice(), v.as_slice())), 0);
 
     // Write output
     let stdout = stdout();
