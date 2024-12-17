@@ -54,19 +54,19 @@ fn join_csv(
 ) -> HashMap<String, Vec<Vec<String>>> {
     let mut new_map: HashMap<String, Vec<Vec<String>>> = HashMap::new();
     map2.into_iter().for_each(|(key, value)| {
-        let first = map1.get(&key).expect(&format!("{key} not found"));
-
-        first.iter().for_each(|line| {
-            value.iter().for_each(|to_add| {
-                let mut line = line.clone();
-                line.extend_from_slice(&to_add[1..]);
-                if let Some(first) = new_map.get_mut(&key) {
-                    first.push(line);
-                } else {
-                    new_map.insert(line[0].clone(), vec![line]);
-                }
+        if let Some(first) = map1.get(&key) {
+            first.iter().for_each(|line| {
+                value.iter().for_each(|to_add| {
+                    let mut line = line.clone();
+                    line.extend_from_slice(&to_add[1..]);
+                    if let Some(first) = new_map.get_mut(&key) {
+                        first.push(line);
+                    } else {
+                        new_map.insert(line[0].clone(), vec![line]);
+                    }
+                });
             });
-        });
+        }
     });
     return new_map;
 }
