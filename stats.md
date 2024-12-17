@@ -129,3 +129,15 @@
       18.381462000 seconds user
        4.127430000 seconds sys
 ```
+
+# smallvec size 4
+
+```
+    79,297,251,479      cycles                                                             
+
+      20.754173519 seconds time elapsed
+
+      18.158947000 seconds user
+       2.587280000 seconds sys
+```
+

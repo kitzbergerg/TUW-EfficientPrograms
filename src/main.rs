@@ -14,7 +14,7 @@ use std::io::Write;
 // d.csv 1-2 c.csv
 
 type CsvField<'a> = &'a [u8];
-type SV<T> = [T; 8];
+type SV<T> = [T; 4];
 
 fn open_reader(file: &str) -> Mmap {
     let file = File::open(file).unwrap();
