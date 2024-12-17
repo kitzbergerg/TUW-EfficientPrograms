@@ -118,3 +118,14 @@
       19.580007000 seconds user
        5.456657000 seconds sys
 ```
+
+# smallvec
+
+```
+    86,108,837,399      cycles                                                             
+
+      22.513780147 seconds time elapsed
+
+      18.381462000 seconds user
+       4.127430000 seconds sys
+```
