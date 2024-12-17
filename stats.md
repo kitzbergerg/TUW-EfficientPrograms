@@ -46,9 +46,9 @@
 
 # simplify
 
-   334,433,149,614      cycles
+   329,846,796,589      cycles
 
-      92.256665089 seconds time elapsed
+      88.845377556 seconds time elapsed
 
-      81.652346000 seconds user
-      10.541331000 seconds sys
+      77.898300000 seconds user
+      10.889052000 seconds sys

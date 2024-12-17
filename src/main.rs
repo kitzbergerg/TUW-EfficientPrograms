@@ -10,7 +10,9 @@ use std::io::Write;
 //             1
 // d.csv 1-2 c.csv
 
-fn read(file: &str) -> Vec<(Vec<u8>, Vec<u8>)> {
+type CsvField = Vec<u8>;
+
+fn read(file: &str) -> impl Iterator<Item = (CsvField, CsvField)> {
     ReaderBuilder::new()
         .has_headers(false)
         .from_path(file)
@@ -23,24 +25,16 @@ fn read(file: &str) -> Vec<(Vec<u8>, Vec<u8>)> {
                 result.get(1).unwrap().to_vec(),
             )
         })
-        .collect()
 }
 
 fn hash_join(
-    left: &HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>,
-    right: Vec<(Vec<u8>, Vec<u8>)>,
+    left: HashMap<CsvField, Vec<Vec<CsvField>>>,
+    right: HashMap<CsvField, Vec<CsvField>>,
     new_key: usize,
-) -> HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>> {
-    // Build a hash index for the right table
-    let mut right_map: HashMap<Vec<u8>, Vec<Vec<u8>>> = HashMap::new();
-    for (key, value) in right {
-        right_map.entry(key).or_default().push(value);
-    }
-
-    // Perform the join
+) -> HashMap<CsvField, Vec<Vec<CsvField>>> {
     left.iter()
         .filter_map(|(key, left_rows)| {
-            right_map.get(key).map(|right_matches| {
+            right.get(key).map(|right_matches| {
                 // build cross product
                 left_rows.iter().flat_map(|left_row| {
                     right_matches.iter().map(|right_element| {
@@ -53,21 +47,16 @@ fn hash_join(
         })
         .fold(
             HashMap::new(),
-            |mut acc: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>, rows| {
-                rows.into_iter().for_each(|row| {
-                    let key = row[new_key].clone();
-                    if let Some(first) = acc.get_mut(&key) {
-                        first.push(row);
-                    } else {
-                        acc.insert(key, vec![row]);
-                    }
+            |mut acc: HashMap<CsvField, Vec<Vec<CsvField>>>, rows| {
+                rows.into_iter().for_each(|value| {
+                    acc.entry(value[new_key].clone()).or_default().push(value);
                 });
                 acc
             },
         )
 }
 
-fn write_output<W: Write>(data: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>, writer: &mut BufWriter<W>) {
+fn write_output<W: Write>(data: HashMap<CsvField, Vec<Vec<CsvField>>>, writer: &mut BufWriter<W>) {
     data.into_values().for_each(|rows| {
         rows.into_iter().for_each(|v| {
             writer.write_all(&v[3]).unwrap();
@@ -88,22 +77,32 @@ fn write_output<W: Write>(data: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>, writer: &mu
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let a = read(&args[1]);
-    let b = read(&args[2]);
-    let c = read(&args[3]);
-    let d = read(&args[4]);
-
-    let mut map: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>> = HashMap::new();
-    for (key, value) in a {
-        map.entry(key.clone())
+    let mut a: HashMap<CsvField, Vec<Vec<CsvField>>> = HashMap::new();
+    for (key, value) in read(&args[1]) {
+        a.entry(key.clone())
             .or_default()
             .push(vec![key, value.clone()]);
     }
 
+    let mut b: HashMap<CsvField, Vec<CsvField>> = HashMap::new();
+    for (key, value) in read(&args[2]) {
+        b.entry(key).or_default().push(value);
+    }
+
+    let mut c: HashMap<CsvField, Vec<CsvField>> = HashMap::new();
+    for (key, value) in read(&args[3]) {
+        c.entry(key).or_default().push(value);
+    }
+
+    let mut d: HashMap<CsvField, Vec<CsvField>> = HashMap::new();
+    for (key, value) in read(&args[4]) {
+        d.entry(key).or_default().push(value);
+    }
+
     // Perform joins
-    map = hash_join(&map, b, 0);
-    map = hash_join(&map, c, 3);
-    map = hash_join(&map, d, 0);
+    let map = hash_join(a, b, 0);
+    let map = hash_join(map, c, 3);
+    let map = hash_join(map, d, 0);
 
     // Write output
     let stdout = stdout();
