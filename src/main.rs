@@ -1,5 +1,4 @@
 use csv::ReaderBuilder;
-use itertools::Itertools;
 use std::collections::HashMap;
 use std::io::stdout;
 use std::io::BufWriter;
@@ -26,23 +25,55 @@ fn read(file: &str) -> Vec<(Vec<u8>, Vec<u8>)> {
         })
         .collect()
 }
-
-fn rebuild_index(
-    map: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>,
-    col: usize,
+fn hash_join(
+    left: &HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>,
+    right: Vec<(Vec<u8>, Vec<u8>)>,
+    new_key: usize,
 ) -> HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>> {
-    map.into_values()
-        .into_iter()
-        .flatten()
-        .sorted_by(|a, b| a[col].cmp(&b[col]))
-        .chunk_by(|a| a[col].clone())
-        .into_iter()
-        .map(|(key, value)| (key, value.collect_vec()))
-        .collect()
+    // Build a hash index for the right table
+    let mut right_map: HashMap<Vec<u8>, Vec<Vec<u8>>> = HashMap::new();
+    right.into_iter().for_each(|(key, value)| {
+        if let Some(first) = right_map.get_mut(&key) {
+            first.push(value);
+        } else {
+            right_map.insert(key.clone(), vec![value]);
+        }
+    });
+
+    // Perform the join
+    left.iter()
+        .filter_map(|(key, left_rows)| {
+            right_map.get(key).map(|right_matches| {
+                // build cross product
+                let mut new_vec = Vec::with_capacity(left_rows.len() * right_matches.len());
+                left_rows.iter().for_each(|left_row| {
+                    right_matches.iter().for_each(|right_element| {
+                        let mut new_row = left_row.clone();
+                        new_row.push(right_element.clone());
+                        new_vec.push(new_row);
+                    })
+                });
+                new_vec
+            })
+        })
+        .fold(
+            HashMap::new(),
+            |mut acc: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>, rows| {
+                rows.into_iter().for_each(|row| {
+                    let key = row[new_key].clone();
+                    if let Some(first) = acc.get_mut(&key) {
+                        first.push(row);
+                    } else {
+                        acc.insert(key, vec![row]);
+                    }
+                });
+                acc
+            },
+        )
 }
 
-fn write<W: Write>(map: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>, writer: &mut BufWriter<W>) {
-    map.into_iter().for_each(|(_, value)| {
+fn write_output<W: Write>(data: &HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>, writer: &mut BufWriter<W>) {
+    data.into_iter().for_each(|(_, value)| {
         value.into_iter().for_each(|v| {
             writer.write_all(&v[3]).unwrap();
             writer.write(b",").unwrap();
@@ -62,7 +93,6 @@ fn write<W: Write>(map: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>, writer: &mut BufWri
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-
     let a = read(&args[1]);
     let b = read(&args[2]);
     let c = read(&args[3]);
@@ -71,53 +101,19 @@ fn main() {
     let mut map: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>> = HashMap::new();
     a.into_iter().for_each(|(key, value)| {
         if let Some(first) = map.get_mut(&key) {
-            first.push(vec![key, value]);
+            first.push(vec![key, value.clone()]);
         } else {
             map.insert(key.clone(), vec![vec![key, value]]);
         }
     });
-    map = join(map, b);
-    map = join(map, c);
-    map = rebuild_index(map, 3);
-    map = join(map, d);
 
-    let mut writer = BufWriter::new(stdout());
-    write(map, &mut writer);
-}
+    // Perform joins
+    map = hash_join(&map, b, 0);
+    map = hash_join(&map, c, 3);
+    map = hash_join(&map, d, 0);
 
-fn join(
-    mut map: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>,
-    b: Vec<(Vec<u8>, Vec<u8>)>,
-) -> HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>> {
-    let mut new_map: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>> = HashMap::new();
-    b.into_iter()
-        .sorted_by(|(a, _), (b, _)| a.cmp(b))
-        .chunk_by(|(key, _)| key.clone())
-        .into_iter()
-        .map(|(key, value)| (key, value.collect_vec()))
-        .for_each(|(key, value)| {
-            if let Some(first) = map.remove(&key) {
-                first
-                    .into_iter()
-                    .map(|line| {
-                        value
-                            .clone()
-                            .into_iter()
-                            .map(|(_, to_add)| {
-                                let mut line = line.clone();
-                                line.push(to_add.clone());
-                                line
-                            })
-                            .collect_vec()
-                    })
-                    .for_each(|v| {
-                        if let Some(first) = new_map.get_mut(&key) {
-                            first.extend(v);
-                        } else {
-                            new_map.insert(key.clone(), v);
-                        }
-                    });
-            }
-        });
-    new_map
+    // Write output
+    let stdout = stdout();
+    let mut writer = BufWriter::new(stdout.lock());
+    write_output(&map, &mut writer);
 }

@@ -34,3 +34,12 @@
 
      105.708734000 seconds user
        9.062233000 seconds sys
+
+# switch to hash join
+
+   352,024,313,086      cycles
+
+      97.007805235 seconds time elapsed
+
+      86.545248000 seconds user
+      10.397422000 seconds sys
