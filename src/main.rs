@@ -35,10 +35,10 @@ fn join<'a, const N0: usize, const N1: usize>(
     new_key: usize,
 ) -> FxHashMap<CsvField<'a>, Vec<[CsvField<'a>; N1]>> {
     let mut result = FxHashMap::default();
-    for (key, value) in right {
-        if let Some(left_rows) = left.get(key) {
-            left_rows
-                .iter()
+    right
+        .filter_map(|(key, value)| left.get(key).map(|rows| (rows, value)))
+        .for_each(|(rows, value)| {
+            rows.iter()
                 .map(|row| {
                     let mut new_row: [&[u8]; N1] = [&[]; N1];
                     new_row[0..N0].copy_from_slice(row);
@@ -51,8 +51,7 @@ fn join<'a, const N0: usize, const N1: usize>(
                         .or_insert_with(Vec::new)
                         .push(row)
                 });
-        }
-    }
+        });
     result
 }
 
