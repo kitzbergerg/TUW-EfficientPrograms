@@ -12,12 +12,14 @@ use std::io::Write;
 //             1
 // d.csv 1-2 c.csv
 
+type CsvField<'a> = &'a [u8];
+
 fn open_reader(file: &str) -> Mmap {
     let file = File::open(file).unwrap();
     unsafe { MmapOptions::new().map(&file).unwrap() }
 }
 
-fn read<'a>(reader: &'a Mmap) -> impl Iterator<Item = (&'a [u8], &'a [u8])> {
+fn read<'a>(reader: &'a Mmap) -> impl Iterator<Item = (CsvField<'a>, CsvField<'a>)> {
     reader
         .split(|b| b == &b'\n')
         .filter(|row| row.len() > 0)
@@ -27,28 +29,34 @@ fn read<'a>(reader: &'a Mmap) -> impl Iterator<Item = (&'a [u8], &'a [u8])> {
         })
 }
 
-fn hash_join<'a>(
-    left: FxHashMap<&'a [u8], Vec<Vec<&'a [u8]>>>,
-    right: impl Iterator<Item = (&'a [u8], &'a [u8])>,
+fn hash_join<'a, const N0: usize, const N1: usize>(
+    left: FxHashMap<CsvField<'a>, Vec<[CsvField<'a>; N0]>>,
+    right: impl Iterator<Item = (CsvField<'a>, CsvField<'a>)>,
     new_key: usize,
-) -> FxHashMap<&'a [u8], Vec<Vec<&'a [u8]>>> {
+) -> FxHashMap<CsvField<'a>, Vec<[CsvField<'a>; N1]>> {
     let mut result = FxHashMap::default();
     for (key, value) in right {
         if let Some(left_rows) = left.get(key) {
-            let mut left_rows_copy = left_rows.clone();
-            left_rows_copy.iter_mut().for_each(|row| row.push(value));
-            left_rows_copy.into_iter().for_each(|row| {
-                result
-                    .entry(row[new_key])
-                    .or_insert_with(Vec::new)
-                    .push(row)
-            });
+            left_rows
+                .iter()
+                .map(|row| {
+                    let mut new_row: [&[u8]; N1] = [&[]; N1];
+                    new_row[0..N0].copy_from_slice(row);
+                    new_row[N0] = value;
+                    new_row
+                })
+                .for_each(|row| {
+                    result
+                        .entry(row[new_key])
+                        .or_insert_with(Vec::new)
+                        .push(row)
+                });
         }
     }
     result
 }
 
-fn write_output<W: Write>(data: &FxHashMap<&[u8], Vec<Vec<&[u8]>>>, writer: &mut BufWriter<W>) {
+fn write_output<W: Write>(data: &FxHashMap<&[u8], Vec<[&[u8]; 5]>>, writer: &mut BufWriter<W>) {
     data.values().for_each(|rows| {
         rows.into_iter().for_each(|v| {
             writer.write_all(&v[3]).unwrap();
@@ -76,20 +84,20 @@ fn main() {
     for (key, value) in a.iter() {
         map.entry(*key)
             .or_insert_with(Vec::new)
-            .push(vec![*key, *value]);
+            .push([*key, *value]);
     }
 
     let mut reader = open_reader(&args[2]);
     let b = read(&mut reader);
-    let map = hash_join(map, b, 0);
+    let map = hash_join::<2, 3>(map, b, 0);
 
     let mut reader = open_reader(&args[3]);
     let c = read(&mut reader);
-    let map = hash_join(map, c, 3);
+    let map = hash_join::<3, 4>(map, c, 3);
 
     let mut reader = open_reader(&args[4]);
     let d = read(&mut reader);
-    let map = hash_join(map, d, 0);
+    let map = hash_join::<4, 5>(map, d, 0);
 
     // Write output
     let stdout = stdout();

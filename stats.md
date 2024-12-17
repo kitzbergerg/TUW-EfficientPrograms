@@ -107,3 +107,14 @@
       33.628653000 seconds user
        5.944337000 seconds sys
 ```
+
+# use arrays instead of vec
+
+```
+    95,035,983,128      cycles
+
+      25.052302256 seconds time elapsed
+
+      19.580007000 seconds user
+       5.456657000 seconds sys
+```
