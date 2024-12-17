@@ -118,3 +118,14 @@
       19.580007000 seconds user
        5.456657000 seconds sys
 ```
+
+# fixed sized array of size 5
+
+```
+   111,596,580,850      cycles
+
+      29.180024734 seconds time elapsed
+
+      21.118652000 seconds user
+       8.033401000 seconds sys
+```
