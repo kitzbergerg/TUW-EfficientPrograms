@@ -25,6 +25,7 @@ fn read(file: &str) -> Vec<(Vec<u8>, Vec<u8>)> {
         })
         .collect()
 }
+
 fn hash_join(
     left: &HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>,
     right: Vec<(Vec<u8>, Vec<u8>)>,
@@ -32,28 +33,22 @@ fn hash_join(
 ) -> HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>> {
     // Build a hash index for the right table
     let mut right_map: HashMap<Vec<u8>, Vec<Vec<u8>>> = HashMap::new();
-    right.into_iter().for_each(|(key, value)| {
-        if let Some(first) = right_map.get_mut(&key) {
-            first.push(value);
-        } else {
-            right_map.insert(key.clone(), vec![value]);
-        }
-    });
+    for (key, value) in right {
+        right_map.entry(key).or_default().push(value);
+    }
 
     // Perform the join
     left.iter()
         .filter_map(|(key, left_rows)| {
             right_map.get(key).map(|right_matches| {
                 // build cross product
-                let mut new_vec = Vec::with_capacity(left_rows.len() * right_matches.len());
-                left_rows.iter().for_each(|left_row| {
-                    right_matches.iter().for_each(|right_element| {
+                left_rows.iter().flat_map(|left_row| {
+                    right_matches.iter().map(|right_element| {
                         let mut new_row = left_row.clone();
                         new_row.push(right_element.clone());
-                        new_vec.push(new_row);
+                        new_row
                     })
-                });
-                new_vec
+                })
             })
         })
         .fold(
@@ -72,9 +67,9 @@ fn hash_join(
         )
 }
 
-fn write_output<W: Write>(data: &HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>, writer: &mut BufWriter<W>) {
-    data.into_iter().for_each(|(_, value)| {
-        value.into_iter().for_each(|v| {
+fn write_output<W: Write>(data: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>, writer: &mut BufWriter<W>) {
+    data.into_values().for_each(|rows| {
+        rows.into_iter().for_each(|v| {
             writer.write_all(&v[3]).unwrap();
             writer.write(b",").unwrap();
             writer.write_all(&v[0]).unwrap();
@@ -99,13 +94,11 @@ fn main() {
     let d = read(&args[4]);
 
     let mut map: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>> = HashMap::new();
-    a.into_iter().for_each(|(key, value)| {
-        if let Some(first) = map.get_mut(&key) {
-            first.push(vec![key, value.clone()]);
-        } else {
-            map.insert(key.clone(), vec![vec![key, value]]);
-        }
-    });
+    for (key, value) in a {
+        map.entry(key.clone())
+            .or_default()
+            .push(vec![key, value.clone()]);
+    }
 
     // Perform joins
     map = hash_join(&map, b, 0);
@@ -115,5 +108,5 @@ fn main() {
     // Write output
     let stdout = stdout();
     let mut writer = BufWriter::new(stdout.lock());
-    write_output(&map, &mut writer);
+    write_output(map, &mut writer);
 }

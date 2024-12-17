@@ -43,3 +43,12 @@
 
       86.545248000 seconds user
       10.397422000 seconds sys
+
+# simplify
+
+   334,433,149,614      cycles
+
+      92.256665089 seconds time elapsed
+
+      81.652346000 seconds user
+      10.541331000 seconds sys
