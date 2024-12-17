@@ -74,3 +74,15 @@
       54.184855000 seconds user
        8.291234000 seconds sys
 ```
+
+# use fxhash
+
+```
+   195,290,306,005      cycles
+
+      50.296644900 seconds time elapsed
+
+      42.038223000 seconds user
+       8.217397000 seconds sys
+
+```

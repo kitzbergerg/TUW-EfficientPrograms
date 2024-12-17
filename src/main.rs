@@ -1,5 +1,5 @@
 use csv::ReaderBuilder;
-use std::collections::HashMap;
+use fxhash::FxHashMap;
 use std::io::stdout;
 use std::io::BufWriter;
 use std::io::Write;
@@ -27,11 +27,11 @@ fn read(file: &str) -> Vec<(Vec<u8>, Vec<u8>)> {
 }
 
 fn hash_join<'a>(
-    left: &HashMap<&'a [u8], Vec<Vec<&'a [u8]>>>,
-    right: &HashMap<&'a [u8], Vec<&'a [u8]>>,
+    left: &FxHashMap<&'a [u8], Vec<Vec<&'a [u8]>>>,
+    right: &FxHashMap<&'a [u8], Vec<&'a [u8]>>,
     new_key: usize,
-) -> HashMap<&'a [u8], Vec<Vec<&'a [u8]>>> {
-    let mut result = HashMap::new();
+) -> FxHashMap<&'a [u8], Vec<Vec<&'a [u8]>>> {
+    let mut result = FxHashMap::default();
     for (key, left_rows) in left {
         if let Some(right_rows) = right.get(key) {
             for left_row in left_rows {
@@ -49,7 +49,7 @@ fn hash_join<'a>(
     result
 }
 
-fn write_output<W: Write>(data: &HashMap<&[u8], Vec<Vec<&[u8]>>>, writer: &mut BufWriter<W>) {
+fn write_output<W: Write>(data: &FxHashMap<&[u8], Vec<Vec<&[u8]>>>, writer: &mut BufWriter<W>) {
     data.values().for_each(|rows| {
         rows.into_iter().for_each(|v| {
             writer.write_all(&v[3]).unwrap();
@@ -71,7 +71,7 @@ fn write_output<W: Write>(data: &HashMap<&[u8], Vec<Vec<&[u8]>>>, writer: &mut B
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    let mut a = HashMap::new();
+    let mut a = FxHashMap::default();
     let a_vec = read(&args[1]);
     for (key, value) in a_vec.iter() {
         a.entry(key.as_slice())
@@ -79,7 +79,7 @@ fn main() {
             .push(vec![key.as_slice(), value.as_slice()]);
     }
 
-    let mut b = HashMap::new();
+    let mut b = FxHashMap::default();
     let b_vec = read(&args[2]);
     for (key, value) in b_vec.iter() {
         b.entry(key.as_slice())
@@ -87,7 +87,7 @@ fn main() {
             .push(value.as_slice());
     }
 
-    let mut c = HashMap::new();
+    let mut c = FxHashMap::default();
     let c_vec = read(&args[3]);
     for (key, value) in c_vec.iter() {
         c.entry(key.as_slice())
@@ -95,7 +95,7 @@ fn main() {
             .push(value.as_slice());
     }
 
-    let mut d = HashMap::new();
+    let mut d = FxHashMap::default();
     let d_vec = read(&args[4]);
     for (key, value) in d_vec.iter() {
         d.entry(key.as_slice())
