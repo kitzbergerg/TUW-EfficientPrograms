@@ -150,5 +150,15 @@
 
       16.703911000 seconds user
        2.995266000 seconds sys
+```
 
+# smallvec specialization and from_slice
+
+```
+    73,009,869,233      cycles                                                             
+
+      19.310266034 seconds time elapsed
+
+      16.208495000 seconds user
+       3.095330000 seconds sys
 ```
