@@ -1,4 +1,6 @@
 use csv::ReaderBuilder;
+use itertools::Itertools;
+use serde::de::value;
 use std::collections::HashMap;
 use std::io::stdout;
 use std::io::BufWriter;
@@ -10,23 +12,21 @@ use std::io::Write;
 //             1
 // d.csv 1-2 c.csv
 
-fn read(file: &str) -> HashMap<String, Vec<Vec<String>>> {
+fn read(file: &str) -> Vec<(String, String)> {
     let mut reader = ReaderBuilder::new()
         .has_headers(false)
         .from_path(file)
         .unwrap();
-    let mut map: HashMap<String, Vec<Vec<String>>> = HashMap::new();
-    for result in reader.records().map(Result::unwrap) {
-        let key = result.get(0).unwrap().to_string();
-        let value = result.get(1).unwrap().to_string();
-
-        if let Some(first) = map.get_mut(&key) {
-            first.push(vec![key, value]);
-        } else {
-            map.insert(key.clone(), vec![vec![key, value]]);
-        }
-    }
-    return map;
+    reader
+        .records()
+        .map(Result::unwrap)
+        .map(|result| {
+            (
+                result.get(0).unwrap().to_string(),
+                result.get(1).unwrap().to_string(),
+            )
+        })
+        .collect()
 }
 
 fn rebuild_index(
@@ -48,29 +48,6 @@ fn rebuild_index(
     return new_map;
 }
 
-fn join_csv(
-    map1: HashMap<String, Vec<Vec<String>>>,
-    map2: HashMap<String, Vec<Vec<String>>>,
-) -> HashMap<String, Vec<Vec<String>>> {
-    let mut new_map: HashMap<String, Vec<Vec<String>>> = HashMap::new();
-    map2.into_iter().for_each(|(key, value)| {
-        if let Some(first) = map1.get(&key) {
-            first.iter().for_each(|line| {
-                value.iter().for_each(|to_add| {
-                    let mut line = line.clone();
-                    line.extend_from_slice(&to_add[1..]);
-                    if let Some(first) = new_map.get_mut(&key) {
-                        first.push(line);
-                    } else {
-                        new_map.insert(line[0].clone(), vec![line]);
-                    }
-                });
-            });
-        }
-    });
-    return new_map;
-}
-
 fn write<W: Write>(map: HashMap<String, Vec<Vec<String>>>, writer: &mut BufWriter<W>) {
     map.into_iter().for_each(|(_, value)| {
         value.into_iter().for_each(|v| {
@@ -89,11 +66,56 @@ fn main() {
     let c = read(&args[3]);
     let d = read(&args[4]);
 
-    let joined_ab = join_csv(a, b);
-    let joined_abc = join_csv(joined_ab, c);
-    let joined_abc = rebuild_index(joined_abc, 3);
-    let joined = join_csv(joined_abc, d);
+    let mut map: HashMap<String, Vec<Vec<String>>> = HashMap::new();
+    a.into_iter().for_each(|(key, value)| {
+        if let Some(first) = map.get_mut(&key) {
+            first.push(vec![key, value]);
+        } else {
+            map.insert(key.clone(), vec![vec![key, value]]);
+        }
+    });
+    map = join(map, b);
+    map = join(map, c);
+    map = rebuild_index(map, 3);
+    map = join(map, d);
 
     let mut writer = BufWriter::new(stdout());
-    write(joined, &mut writer);
+    write(map, &mut writer);
+}
+
+fn join(
+    mut map: HashMap<String, Vec<Vec<String>>>,
+    b: Vec<(String, String)>,
+) -> HashMap<String, Vec<Vec<String>>> {
+    let mut new_map: HashMap<String, Vec<Vec<String>>> = HashMap::new();
+    b.into_iter()
+        .sorted_by(|(a, _), (b, _)| a.cmp(b))
+        .chunk_by(|(key, _)| key.clone())
+        .into_iter()
+        .map(|(key, value)| (key, value.collect_vec()))
+        .for_each(|(key, value)| {
+            if let Some(first) = map.remove(&key) {
+                first
+                    .into_iter()
+                    .map(|line| {
+                        value
+                            .clone()
+                            .into_iter()
+                            .map(|(_, to_add)| {
+                                let mut line = line.clone();
+                                line.push(to_add.clone());
+                                line
+                            })
+                            .collect_vec()
+                    })
+                    .for_each(|v| {
+                        if let Some(first) = new_map.get_mut(&key) {
+                            first.extend(v);
+                        } else {
+                            new_map.insert(key.clone(), v);
+                        }
+                    });
+            }
+        });
+    new_map
 }
