@@ -1,6 +1,5 @@
 use csv::ReaderBuilder;
 use itertools::Itertools;
-use serde::de::value;
 use std::collections::HashMap;
 use std::io::stdout;
 use std::io::BufWriter;
@@ -12,28 +11,27 @@ use std::io::Write;
 //             1
 // d.csv 1-2 c.csv
 
-fn read(file: &str) -> Vec<(String, String)> {
-    let mut reader = ReaderBuilder::new()
+fn read(file: &str) -> Vec<(Vec<u8>, Vec<u8>)> {
+    ReaderBuilder::new()
         .has_headers(false)
         .from_path(file)
-        .unwrap();
-    reader
-        .records()
+        .unwrap()
+        .into_byte_records()
         .map(Result::unwrap)
         .map(|result| {
             (
-                result.get(0).unwrap().to_string(),
-                result.get(1).unwrap().to_string(),
+                result.get(0).unwrap().to_vec(),
+                result.get(1).unwrap().to_vec(),
             )
         })
         .collect()
 }
 
 fn rebuild_index(
-    map: HashMap<String, Vec<Vec<String>>>,
+    map: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>,
     col: usize,
-) -> HashMap<String, Vec<Vec<String>>> {
-    let mut new_map: HashMap<String, Vec<Vec<String>>> = HashMap::with_capacity(map.len());
+) -> HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>> {
+    let mut new_map: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>> = HashMap::with_capacity(map.len());
     map.into_values()
         .into_iter()
         .flatten()
@@ -48,10 +46,19 @@ fn rebuild_index(
     return new_map;
 }
 
-fn write<W: Write>(map: HashMap<String, Vec<Vec<String>>>, writer: &mut BufWriter<W>) {
+fn write<W: Write>(map: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>, writer: &mut BufWriter<W>) {
     map.into_iter().for_each(|(_, value)| {
         value.into_iter().for_each(|v| {
-            writeln!(writer, "{},{},{},{},{}", v[0], v[3], v[1], v[2], v[4]).unwrap();
+            writer.write_all(&v[0]).unwrap();
+            writer.write(b",").unwrap();
+            writer.write_all(&v[3]).unwrap();
+            writer.write(b",").unwrap();
+            writer.write_all(&v[1]).unwrap();
+            writer.write(b",").unwrap();
+            writer.write_all(&v[2]).unwrap();
+            writer.write(b",").unwrap();
+            writer.write_all(&v[4]).unwrap();
+            writer.write(b"\n").unwrap();
         });
     });
 
@@ -66,7 +73,7 @@ fn main() {
     let c = read(&args[3]);
     let d = read(&args[4]);
 
-    let mut map: HashMap<String, Vec<Vec<String>>> = HashMap::new();
+    let mut map: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>> = HashMap::new();
     a.into_iter().for_each(|(key, value)| {
         if let Some(first) = map.get_mut(&key) {
             first.push(vec![key, value]);
@@ -84,10 +91,10 @@ fn main() {
 }
 
 fn join(
-    mut map: HashMap<String, Vec<Vec<String>>>,
-    b: Vec<(String, String)>,
-) -> HashMap<String, Vec<Vec<String>>> {
-    let mut new_map: HashMap<String, Vec<Vec<String>>> = HashMap::new();
+    mut map: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>,
+    b: Vec<(Vec<u8>, Vec<u8>)>,
+) -> HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>> {
+    let mut new_map: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>> = HashMap::new();
     b.into_iter()
         .sorted_by(|(a, _), (b, _)| a.cmp(b))
         .chunk_by(|(key, _)| key.clone())

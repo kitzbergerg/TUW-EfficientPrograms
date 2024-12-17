@@ -16,3 +16,21 @@
 
      108.286886000 seconds user
       11.028146000 seconds sys
+
+# join file by file
+
+   434,880,577,583      cycles
+
+     116.514198733 seconds time elapsed
+
+     107.258709000 seconds user
+       9.169734000 seconds sys
+
+# use byte vectors instead of strings
+
+   426,439,974,509      cycles
+
+     114.846540260 seconds time elapsed
+
+     105.708734000 seconds user
+       9.062233000 seconds sys
