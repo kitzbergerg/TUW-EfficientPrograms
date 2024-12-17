@@ -57,8 +57,10 @@ fn hash_join<'a, const N0: usize, const N1: usize>(
 }
 
 fn write_output<W: Write>(data: &FxHashMap<&[u8], Vec<[&[u8]; 5]>>, writer: &mut BufWriter<W>) {
-    data.values().for_each(|rows| {
-        rows.into_iter().for_each(|v| {
+    data.values()
+        .map(IntoIterator::into_iter)
+        .flatten()
+        .for_each(|v| {
             writer.write_all(&v[3]).unwrap();
             writer.write(b",").unwrap();
             writer.write_all(&v[0]).unwrap();
@@ -70,7 +72,6 @@ fn write_output<W: Write>(data: &FxHashMap<&[u8], Vec<[&[u8]; 5]>>, writer: &mut
             writer.write_all(&v[4]).unwrap();
             writer.write(b"\n").unwrap();
         });
-    });
 
     writer.flush().unwrap();
 }
