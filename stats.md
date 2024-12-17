@@ -96,3 +96,14 @@
       42.746668000 seconds user
        6.573949000 seconds sys
 ```
+
+# mmap files
+
+```
+   144,243,649,624      cycles
+
+      39.624025050 seconds time elapsed
+
+      33.628653000 seconds user
+       5.944337000 seconds sys
+```
