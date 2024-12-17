@@ -36,7 +36,7 @@ fn join<'a, const N0: usize, const N1: usize>(
     right: impl Iterator<Item = (CsvField<'a>, CsvField<'a>)>,
     new_key: usize,
 ) -> FxHashMap<CsvField<'a>, SmallVec<SV<[CsvField<'a>; N1]>>> {
-    let mut result = FxHashMap::default();
+    let mut result = FxHashMap::with_capacity_and_hasher(4000000, Default::default());
     right
         .filter_map(|(key, value)| left.get(key).map(|rows| (rows, value)))
         .for_each(|(rows, value)| {
@@ -82,7 +82,7 @@ fn write_output<W: Write>(
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let mut map = FxHashMap::default();
+    let mut map = FxHashMap::with_capacity_and_hasher(7000000, Default::default());
 
     let mut reader = open_reader(&args[1]);
     stream_data(&mut reader).for_each(|(key, value)| {

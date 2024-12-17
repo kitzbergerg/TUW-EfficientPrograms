@@ -141,3 +141,14 @@
        2.587280000 seconds sys
 ```
 
+# hashmap reserve capacity
+
+```
+    74,557,579,140      cycles                                                             
+
+      19.704447408 seconds time elapsed
+
+      16.703911000 seconds user
+       2.995266000 seconds sys
+
+```
