@@ -31,27 +31,22 @@ fn rebuild_index(
     map: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>,
     col: usize,
 ) -> HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>> {
-    let mut new_map: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>> = HashMap::with_capacity(map.len());
     map.into_values()
         .into_iter()
         .flatten()
-        .for_each(|mut line| {
-            line.swap(0, col);
-            if let Some(first) = new_map.get_mut(&line[0]) {
-                first.push(line);
-            } else {
-                new_map.insert(line[0].clone(), vec![line]);
-            }
-        });
-    return new_map;
+        .sorted_by(|a, b| a[col].cmp(&b[col]))
+        .chunk_by(|a| a[col].clone())
+        .into_iter()
+        .map(|(key, value)| (key, value.collect_vec()))
+        .collect()
 }
 
 fn write<W: Write>(map: HashMap<Vec<u8>, Vec<Vec<Vec<u8>>>>, writer: &mut BufWriter<W>) {
     map.into_iter().for_each(|(_, value)| {
         value.into_iter().for_each(|v| {
-            writer.write_all(&v[0]).unwrap();
-            writer.write(b",").unwrap();
             writer.write_all(&v[3]).unwrap();
+            writer.write(b",").unwrap();
+            writer.write_all(&v[0]).unwrap();
             writer.write(b",").unwrap();
             writer.write_all(&v[1]).unwrap();
             writer.write(b",").unwrap();
