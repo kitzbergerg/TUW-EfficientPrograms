@@ -5,6 +5,8 @@ use mimalloc::MiMalloc;
 use rayon::iter::ParallelBridge;
 use rayon::iter::ParallelIterator;
 use smallvec::SmallVec;
+use std::cmp::max;
+use std::cmp::min;
 use std::fs::File;
 use std::io::stdout;
 use std::io::BufWriter;
@@ -54,14 +56,44 @@ fn open_reader(file: &str) -> Mmap {
 }
 
 fn stream_data<'a>(reader: &'a Mmap) -> impl ParallelIterator<Item = (CsvField<'a>, CsvField<'a>)> {
-    reader
-        .split(|&b| b == b'\n')
-        .par_bridge()
-        .filter(|row| !row.is_empty())
-        .map(|row| {
-            let mut iter = row.split(|&b| b == b',');
-            (iter.next().unwrap(), iter.next().unwrap())
-        })
+    let length = reader.len();
+    let num_splits = max(1, min(16, length / 100));
+    let split_len = length / num_splits;
+
+    let mut splits = Vec::with_capacity(num_splits);
+    for i in 0..num_splits {
+        splits.push(i * split_len);
+    }
+
+    splits.iter_mut().skip(1).for_each(|el| {
+        while reader[*el] != b'\n' {
+            *el += 1;
+        }
+        *el += 1;
+    });
+    let mut splits2 = splits.clone();
+    splits2.push(length);
+
+    let (send, recv) = std::sync::mpsc::channel();
+
+    splits
+        .into_iter()
+        .zip(splits2.into_iter().skip(1))
+        .for_each(|(start, end)| {
+            rayon::scope(|s| {
+                s.spawn(|_| {
+                    reader[start..end]
+                        .split(|&b| b == b'\n')
+                        .filter(|row| !row.is_empty())
+                        .for_each(|row| {
+                            let mut iter = row.split(|&b| b == b',');
+                            send.send((iter.next().unwrap(), iter.next().unwrap()))
+                                .unwrap()
+                        });
+                })
+            })
+        });
+    recv.into_iter().par_bridge()
 }
 
 fn join<'a, const N0: usize, const N1: usize>(
