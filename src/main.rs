@@ -41,32 +41,34 @@ fn write_output<'a, W: Write>(
     abc: FxHashMap<CsvField<'a>, SmallVec<SV3<SmallVec<SV<CsvField<'a>>>>>>,
     d_map: FxHashMap<CsvField<'a>, SmallVec<SV<CsvField<'a>>>>,
 ) {
-    abc.into_iter()
+    abc.iter()
         .filter(|(_, vec)| vec.len() == 3)
-        .for_each(|(key, vec)| {
-            let a_cols2 = &vec[0];
-            let b_cols2 = &vec[1];
-            let c_cols2 = &vec[2];
-            c_cols2.into_iter().for_each(|c_col2| {
-                if let Some(d_cols2) = d_map.get(c_col2) {
-                    d_cols2.into_iter().for_each(|d_col2| {
-                        a_cols2.into_iter().for_each(|a_col2| {
-                            b_cols2.into_iter().for_each(|b_col2| {
-                                writer.write_all(&c_col2).unwrap();
-                                writer.write(b",").unwrap();
-                                writer.write_all(key).unwrap();
-                                writer.write(b",").unwrap();
-                                writer.write_all(&a_col2).unwrap();
-                                writer.write(b",").unwrap();
-                                writer.write_all(&b_col2).unwrap();
-                                writer.write(b",").unwrap();
-                                writer.write_all(&d_col2).unwrap();
-                                writer.write(b"\n").unwrap();
-                            });
-                        });
-                    });
-                }
-            });
+        .map(|(key, abc_cols2)| (key, &abc_cols2[0], &abc_cols2[1], &abc_cols2[2]))
+        .flat_map(|(abc_col1, a_cols2, b_cols2, c_cols2)| {
+            c_cols2
+                .iter()
+                .filter_map(|c_col2| d_map.get(c_col2).map(|d_cols2| (c_col2, d_cols2)))
+                .flat_map(move |(c_col2, d_cols2)| {
+                    d_cols2.iter().flat_map(move |d_col2| {
+                        a_cols2.iter().flat_map(move |a_col2| {
+                            b_cols2
+                                .iter()
+                                .map(move |b_col2| (abc_col1, a_col2, b_col2, c_col2, d_col2))
+                        })
+                    })
+                })
+        })
+        .for_each(|(abc_col1, a_col2, b_col2, c_col2, d_col2)| {
+            writer.write_all(c_col2).unwrap();
+            writer.write(b",").unwrap();
+            writer.write_all(abc_col1).unwrap();
+            writer.write(b",").unwrap();
+            writer.write_all(a_col2).unwrap();
+            writer.write(b",").unwrap();
+            writer.write_all(b_col2).unwrap();
+            writer.write(b",").unwrap();
+            writer.write_all(d_col2).unwrap();
+            writer.write(b"\n").unwrap();
         });
 
     writer.flush().unwrap();

@@ -180,3 +180,9 @@
 ```
     61,371,900,000      cycles
 ```
+
+# use flatmap over nested loop
+
+```
+    60,532,700,000      cycles
+```
