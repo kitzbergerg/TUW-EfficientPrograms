@@ -1,4 +1,4 @@
-use fxhash::FxHashMap;
+use hash::MyHashMap;
 use memmap::Mmap;
 use memmap::MmapOptions;
 use mimalloc::MiMalloc;
@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::stdout;
 use std::io::BufWriter;
 use std::io::Write;
+mod hash;
 
 // a.csv 1-1 b.csv
 //             1
@@ -38,8 +39,8 @@ fn stream_data<'a>(reader: &'a Mmap) -> impl Iterator<Item = (CsvField<'a>, CsvF
 
 fn write_output<'a, W: Write>(
     writer: &mut BufWriter<W>,
-    abc: FxHashMap<CsvField<'a>, SmallVec<SV3<SmallVec<SV<CsvField<'a>>>>>>,
-    d_map: FxHashMap<CsvField<'a>, SmallVec<SV<CsvField<'a>>>>,
+    abc: MyHashMap<CsvField<'a>, SmallVec<SV3<SmallVec<SV<CsvField<'a>>>>>>,
+    d_map: MyHashMap<CsvField<'a>, SmallVec<SV<CsvField<'a>>>>,
 ) {
     abc.iter()
         .filter(|(_, vec)| vec.len() == 3)
@@ -76,7 +77,7 @@ fn write_output<'a, W: Write>(
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let mut abc_map = FxHashMap::with_capacity_and_hasher(2500000, Default::default());
+    let mut abc_map = MyHashMap::with_capacity_and_hasher(2500000, Default::default());
 
     let mut reader = open_reader(&args[1]);
     stream_data(&mut reader).for_each(|(key, value)| {
@@ -102,7 +103,7 @@ fn main() {
         abc_map.entry(key).and_modify(|vec| vec[2].push(value));
     });
 
-    let mut d_map = FxHashMap::with_capacity_and_hasher(2500000, Default::default());
+    let mut d_map = MyHashMap::with_capacity_and_hasher(2500000, Default::default());
     let mut reader = open_reader(&args[4]);
     stream_data(&mut reader).for_each(|(key, value)| {
         d_map
