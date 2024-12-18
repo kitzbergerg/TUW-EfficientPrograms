@@ -1,11 +1,11 @@
 use fxhash::FxHashMap;
-use memmap::Mmap;
-use memmap::MmapOptions;
 use mimalloc::MiMalloc;
 use smallvec::SmallVec;
 use std::fs::File;
 use std::io::stdout;
+use std::io::BufReader;
 use std::io::BufWriter;
+use std::io::Read;
 use std::io::Write;
 
 // a.csv 1-1 b.csv
@@ -21,17 +21,21 @@ type CsvField<'a> = &'a [u8];
 type SV3<T> = [T; 3];
 type SV<T> = [T; 4];
 
-fn open_reader(file: &str) -> Mmap {
+fn open_reader(file: &str) -> Vec<u8> {
     let file = File::open(file).unwrap();
-    unsafe { MmapOptions::new().map(&file).unwrap() }
+    let mut reader = BufReader::with_capacity(256 * 1024, file);
+    let mut buffer = Vec::with_capacity(300 * 1024 * 1024);
+
+    reader.read_to_end(&mut buffer).unwrap();
+    buffer
 }
 
-fn stream_data<'a>(reader: &'a Mmap) -> impl Iterator<Item = (CsvField<'a>, CsvField<'a>)> {
-    reader
+fn stream_data<'a>(data: &'a Vec<u8>) -> impl Iterator<Item = (CsvField<'a>, CsvField<'a>)> {
+    data
         .split(|&b| b == b'\n')
         .filter(|row| !row.is_empty())
         .map(|row| {
-            let mut iter = row.split(|&b| b == b',');
+            let mut iter = row.splitn(2, |&b| b == b',');
             (iter.next().unwrap(), iter.next().unwrap())
         })
 }
@@ -70,8 +74,6 @@ fn write_output<'a, W: Write>(
             writer.write_all(d_col2).unwrap();
             writer.write(b"\n").unwrap();
         });
-
-    writer.flush().unwrap();
 }
 
 fn main() {
@@ -113,6 +115,6 @@ fn main() {
 
     // Write output
     let stdout = stdout();
-    let mut writer = BufWriter::new(stdout.lock());
+    let mut writer = BufWriter::with_capacity(256 * 1024, stdout.lock());
     write_output(&mut writer, abc_map, d_map);
 }

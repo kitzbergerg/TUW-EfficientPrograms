@@ -186,3 +186,9 @@
 ```
     60,532,700,000      cycles
 ```
+
+# use bufreader instead of mmap, splitn, with_capacity
+
+```
+    56,864,600,000      cycles
+```
