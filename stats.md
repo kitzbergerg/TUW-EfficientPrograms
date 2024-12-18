@@ -174,3 +174,9 @@
 ```
     67,935,496,155      cycles
 ```
+
+# remove unnecessary vec
+
+```
+    61,371,900,000      cycles
+```

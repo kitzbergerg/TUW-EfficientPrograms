@@ -38,34 +38,36 @@ fn stream_data<'a>(reader: &'a Mmap) -> impl Iterator<Item = (CsvField<'a>, CsvF
 
 fn write_output<'a, W: Write>(
     writer: &mut BufWriter<W>,
-    abc: Vec<(&[u8], [SmallVec<SV<CsvField<'a>>>; 3])>,
+    abc: FxHashMap<CsvField<'a>, SmallVec<SV3<SmallVec<SV<CsvField<'a>>>>>>,
     d_map: FxHashMap<CsvField<'a>, SmallVec<SV<CsvField<'a>>>>,
 ) {
-    abc.into_iter().for_each(|(key, vec)| {
-        let a_cols2 = &vec[0];
-        let b_cols2 = &vec[1];
-        let c_cols2 = &vec[2];
-        c_cols2.into_iter().for_each(|c_col2| {
-            if let Some(d_cols2) = d_map.get(c_col2) {
-                d_cols2.into_iter().for_each(|d_col2| {
-                    a_cols2.into_iter().for_each(|a_col2| {
-                        b_cols2.into_iter().for_each(|b_col2| {
-                            writer.write_all(&c_col2).unwrap();
-                            writer.write(b",").unwrap();
-                            writer.write_all(key).unwrap();
-                            writer.write(b",").unwrap();
-                            writer.write_all(&a_col2).unwrap();
-                            writer.write(b",").unwrap();
-                            writer.write_all(&b_col2).unwrap();
-                            writer.write(b",").unwrap();
-                            writer.write_all(&d_col2).unwrap();
-                            writer.write(b"\n").unwrap();
+    abc.into_iter()
+        .filter(|(_, vec)| vec.len() == 3)
+        .for_each(|(key, vec)| {
+            let a_cols2 = &vec[0];
+            let b_cols2 = &vec[1];
+            let c_cols2 = &vec[2];
+            c_cols2.into_iter().for_each(|c_col2| {
+                if let Some(d_cols2) = d_map.get(c_col2) {
+                    d_cols2.into_iter().for_each(|d_col2| {
+                        a_cols2.into_iter().for_each(|a_col2| {
+                            b_cols2.into_iter().for_each(|b_col2| {
+                                writer.write_all(&c_col2).unwrap();
+                                writer.write(b",").unwrap();
+                                writer.write_all(key).unwrap();
+                                writer.write(b",").unwrap();
+                                writer.write_all(&a_col2).unwrap();
+                                writer.write(b",").unwrap();
+                                writer.write_all(&b_col2).unwrap();
+                                writer.write(b",").unwrap();
+                                writer.write_all(&d_col2).unwrap();
+                                writer.write(b"\n").unwrap();
+                            });
                         });
                     });
-                });
-            }
+                }
+            });
         });
-    });
 
     writer.flush().unwrap();
 }
@@ -97,11 +99,6 @@ fn main() {
     stream_data(&mut reader).for_each(|(key, value)| {
         abc_map.entry(key).and_modify(|vec| vec[2].push(value));
     });
-    let abc_map = abc_map
-        .into_iter()
-        .filter(|(_, v)| v.len() == 3)
-        .map(|(key, value)| (key, value.into_inner().unwrap()))
-        .collect();
 
     let mut d_map = FxHashMap::with_capacity_and_hasher(2500000, Default::default());
     let mut reader = open_reader(&args[4]);
