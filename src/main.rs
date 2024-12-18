@@ -9,6 +9,7 @@ use std::fs::File;
 use std::io::stdout;
 use std::io::BufWriter;
 use std::io::Write;
+use std::sync::mpsc::IntoIter;
 
 // a.csv 1-1 b.csv
 //             1
@@ -21,6 +22,31 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 type CsvField<'a> = &'a [u8];
 type SV<T> = [T; 4];
+
+pub struct IntoSeqIter<I>(IntoIter<I>);
+
+impl<I> Iterator for IntoSeqIter<I> {
+    type Item = I;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+}
+
+pub trait IntoSeqIterator: ParallelIterator {
+    fn into_seq_iter(self: Self) -> IntoSeqIter<Self::Item> {
+        let (send, recv) = std::sync::mpsc::channel();
+        rayon::scope(|s| {
+            s.spawn(|_| {
+                self.for_each(|el| {
+                    let _ = send.send(el);
+                })
+            })
+        });
+        IntoSeqIter(recv.into_iter())
+    }
+}
+
+impl<P: ParallelIterator> IntoSeqIterator for P {}
 
 fn open_reader(file: &str) -> Mmap {
     let file = File::open(file).unwrap();
@@ -46,8 +72,7 @@ fn join<'a, const N0: usize, const N1: usize>(
     let mut map = FxHashMap::with_capacity_and_hasher(4000000, Default::default());
     right
         .filter_map(|(key, value)| left.get(key).map(|rows| (rows, value)))
-        .collect::<Vec<_>>()
-        .into_iter()
+        .into_seq_iter()
         .for_each(|(rows, value)| {
             rows.iter()
                 .map(|row| {
@@ -70,7 +95,7 @@ fn write_output<W: Write>(
     writer: &mut BufWriter<W>,
 ) {
     data.values()
-        .map(IntoIterator::into_iter)
+        .map(|s| s.into_iter())
         .flatten()
         .for_each(|v| {
             writer.write_all(&v[3]).unwrap();
@@ -94,8 +119,7 @@ fn main() {
 
     let mut reader = open_reader(&args[1]);
     stream_data(&mut reader)
-        .collect::<Vec<_>>()
-        .into_iter()
+        .into_seq_iter()
         .for_each(|(key, value)| {
             map.entry(key)
                 .and_modify(|vec: &mut SmallVec<SV<_>>| vec.push([key, value]))
