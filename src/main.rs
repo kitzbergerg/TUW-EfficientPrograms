@@ -18,8 +18,8 @@ use std::io::Write;
 static GLOBAL: MiMalloc = MiMalloc;
 
 type CsvField<'a> = &'a [u8];
-type SV3<T> = [T; 3];
-type SV<T> = [T; 4];
+type SvAbc<T> = [T; 3];
+type SvMultiValue<T> = [T; 2];
 
 fn open_reader(file: &str) -> Vec<u8> {
     let file = File::open(file).unwrap();
@@ -31,8 +31,7 @@ fn open_reader(file: &str) -> Vec<u8> {
 }
 
 fn stream_data<'a>(data: &'a Vec<u8>) -> impl Iterator<Item = (CsvField<'a>, CsvField<'a>)> {
-    data
-        .split(|&b| b == b'\n')
+    data.split(|&b| b == b'\n')
         .filter(|row| !row.is_empty())
         .map(|row| {
             let mut iter = row.splitn(2, |&b| b == b',');
@@ -42,8 +41,8 @@ fn stream_data<'a>(data: &'a Vec<u8>) -> impl Iterator<Item = (CsvField<'a>, Csv
 
 fn write_output<'a, W: Write>(
     writer: &mut BufWriter<W>,
-    abc: FxHashMap<CsvField<'a>, SmallVec<SV3<SmallVec<SV<CsvField<'a>>>>>>,
-    d_map: FxHashMap<CsvField<'a>, SmallVec<SV<CsvField<'a>>>>,
+    abc: FxHashMap<CsvField<'a>, SmallVec<SvAbc<SmallVec<SvMultiValue<CsvField<'a>>>>>>,
+    d_map: FxHashMap<CsvField<'a>, SmallVec<SvMultiValue<CsvField<'a>>>>,
 ) {
     abc.iter()
         .filter(|(_, vec)| vec.len() == 3)
@@ -84,7 +83,7 @@ fn main() {
     stream_data(&mut reader).for_each(|(key, value)| {
         abc_map
             .entry(key)
-            .and_modify(|vec: &mut SmallVec<SV3<SmallVec<SV<_>>>>| vec[0].push(value))
+            .and_modify(|vec: &mut SmallVec<SvAbc<SmallVec<SvMultiValue<_>>>>| vec[0].push(value))
             .or_insert_with(|| {
                 let mut sv = SmallVec::with_capacity(3);
                 sv.push(SmallVec::from_slice(&[value]));
@@ -109,7 +108,7 @@ fn main() {
     stream_data(&mut reader).for_each(|(key, value)| {
         d_map
             .entry(key)
-            .and_modify(|vec: &mut SmallVec<SV<_>>| vec.push(value))
+            .and_modify(|vec: &mut SmallVec<SvMultiValue<_>>| vec.push(value))
             .or_insert(SmallVec::from_slice(&[value]));
     });
 

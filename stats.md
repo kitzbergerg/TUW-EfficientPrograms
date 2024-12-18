@@ -192,3 +192,10 @@
 ```
     56,864,600,000      cycles
 ```
+
+# reduce smallvec array size
+
+```
+    53,971,400,000      cycles
+```
+
