@@ -2,6 +2,8 @@ use fxhash::FxHashMap;
 use memmap::Mmap;
 use memmap::MmapOptions;
 use mimalloc::MiMalloc;
+use rayon::iter::ParallelBridge;
+use rayon::iter::ParallelIterator;
 use smallvec::SmallVec;
 use std::fs::File;
 use std::io::stdout;
@@ -25,9 +27,10 @@ fn open_reader(file: &str) -> Mmap {
     unsafe { MmapOptions::new().map(&file).unwrap() }
 }
 
-fn stream_data<'a>(reader: &'a Mmap) -> impl Iterator<Item = (CsvField<'a>, CsvField<'a>)> {
+fn stream_data<'a>(reader: &'a Mmap) -> impl ParallelIterator<Item = (CsvField<'a>, CsvField<'a>)> {
     reader
         .split(|&b| b == b'\n')
+        .par_bridge()
         .filter(|row| !row.is_empty())
         .map(|row| {
             let mut iter = row.split(|&b| b == b',');
@@ -37,13 +40,13 @@ fn stream_data<'a>(reader: &'a Mmap) -> impl Iterator<Item = (CsvField<'a>, CsvF
 
 fn join<'a, const N0: usize, const N1: usize>(
     left: FxHashMap<CsvField<'a>, SmallVec<SV<[CsvField<'a>; N0]>>>,
-    right: impl Iterator<Item = (CsvField<'a>, CsvField<'a>)>,
+    right: impl ParallelIterator<Item = (CsvField<'a>, CsvField<'a>)>,
     new_key: usize,
 ) -> FxHashMap<CsvField<'a>, SmallVec<SV<[CsvField<'a>; N1]>>> {
-    let mut map = FxHashMap::with_capacity_and_hasher(4000000, Default::default());
     right
         .filter_map(|(key, value)| left.get(key).map(|rows| (rows, value)))
-        .for_each(|(rows, value)| {
+        .map(|(rows, value)| {
+            let mut inner_map = FxHashMap::default();
             rows.iter()
                 .map(|row| {
                     let mut new_row: [&[u8]; N1] = [&[]; N1];
@@ -52,12 +55,24 @@ fn join<'a, const N0: usize, const N1: usize>(
                     new_row
                 })
                 .for_each(|row| {
-                    map.entry(row[new_key])
+                    inner_map
+                        .entry(row[new_key])
                         .and_modify(|vec: &mut SmallVec<SV<_>>| vec.push(row))
                         .or_insert(SmallVec::<SV<_>>::from_slice(&[row]));
                 });
-        });
-    map
+            inner_map
+        })
+        .reduce(
+            || FxHashMap::with_capacity_and_hasher(4000000, Default::default()),
+            |mut a, b| {
+                b.into_iter().for_each(|(key, mut value)| {
+                    a.entry(key)
+                        .and_modify(|vec| vec.append(&mut value))
+                        .or_insert(value);
+                });
+                a
+            },
+        )
 }
 
 fn write_output<W: Write>(
@@ -85,14 +100,26 @@ fn write_output<W: Write>(
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let mut map = FxHashMap::with_capacity_and_hasher(7000000, Default::default());
 
     let mut reader = open_reader(&args[1]);
-    stream_data(&mut reader).for_each(|(key, value)| {
-        map.entry(key)
-            .and_modify(|vec: &mut SmallVec<SV<_>>| vec.push([key, value]))
-            .or_insert(SmallVec::<SV<_>>::from_slice(&[[key, value]]));
-    });
+    let map = stream_data(&mut reader)
+        .fold(FxHashMap::default, |mut acc, (key, value)| {
+            acc.entry(key)
+                .and_modify(|vec: &mut SmallVec<SV<_>>| vec.push([key, value]))
+                .or_insert(SmallVec::<SV<_>>::from_slice(&[[key, value]]));
+            acc
+        })
+        .reduce(
+            || FxHashMap::with_capacity_and_hasher(7000000, Default::default()),
+            |mut a, b| {
+                b.into_iter().for_each(|(key, mut value)| {
+                    a.entry(key)
+                        .and_modify(|vec| vec.append(&mut value))
+                        .or_insert(value);
+                });
+                a
+            },
+        );
 
     let mut reader = open_reader(&args[2]);
     let map = join::<2, 3>(map, stream_data(&mut reader), 0);
