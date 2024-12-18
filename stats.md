@@ -122,7 +122,7 @@
 # smallvec
 
 ```
-    86,108,837,399      cycles                                                             
+    86,108,837,399      cycles
 
       22.513780147 seconds time elapsed
 
@@ -133,7 +133,7 @@
 # smallvec size 4
 
 ```
-    79,297,251,479      cycles                                                             
+    79,297,251,479      cycles
 
       20.754173519 seconds time elapsed
 
@@ -144,7 +144,7 @@
 # hashmap reserve capacity
 
 ```
-    74,557,579,140      cycles                                                             
+    74,557,579,140      cycles
 
       19.704447408 seconds time elapsed
 
@@ -155,10 +155,16 @@
 # smallvec specialization and from_slice
 
 ```
-    73,009,869,233      cycles                                                             
+    71,046,277,939      cycles
 
       19.310266034 seconds time elapsed
 
       16.208495000 seconds user
        3.095330000 seconds sys
+```
+
+# switch allocator to mimalloc
+
+```
+    66,728,900,000      cycles
 ```

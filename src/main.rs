@@ -1,6 +1,7 @@
 use fxhash::FxHashMap;
 use memmap::Mmap;
 use memmap::MmapOptions;
+use mimalloc::MiMalloc;
 use smallvec::SmallVec;
 use std::fs::File;
 use std::io::stdout;
@@ -12,6 +13,9 @@ use std::io::Write;
 //             |
 //             1
 // d.csv 1-2 c.csv
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 type CsvField<'a> = &'a [u8];
 type SV<T> = [T; 4];

@@ -14,9 +14,4 @@ smallvec = { version = "1.13", features = [
     "may_dangle",
     "specialization",
 ] }
-
-[profile.release]
-codegen-units = 1
-opt-level = 3
-lto = "fat"
-debug = true
+mimalloc = "0.1.43"
