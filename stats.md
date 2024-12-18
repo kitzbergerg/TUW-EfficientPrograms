@@ -168,3 +168,9 @@
 ```
     66,728,900,000      cycles
 ```
+
+# rewrite algorithm 'Deferred Join'
+
+```
+    67,935,496,155      cycles
+```

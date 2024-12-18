@@ -18,6 +18,7 @@ use std::io::Write;
 static GLOBAL: MiMalloc = MiMalloc;
 
 type CsvField<'a> = &'a [u8];
+type SV3<T> = [T; 3];
 type SV<T> = [T; 4];
 
 fn open_reader(file: &str) -> Mmap {
@@ -35,76 +36,84 @@ fn stream_data<'a>(reader: &'a Mmap) -> impl Iterator<Item = (CsvField<'a>, CsvF
         })
 }
 
-fn join<'a, const N0: usize, const N1: usize>(
-    left: FxHashMap<CsvField<'a>, SmallVec<SV<[CsvField<'a>; N0]>>>,
-    right: impl Iterator<Item = (CsvField<'a>, CsvField<'a>)>,
-    new_key: usize,
-) -> FxHashMap<CsvField<'a>, SmallVec<SV<[CsvField<'a>; N1]>>> {
-    let mut map = FxHashMap::with_capacity_and_hasher(4000000, Default::default());
-    right
-        .filter_map(|(key, value)| left.get(key).map(|rows| (rows, value)))
-        .for_each(|(rows, value)| {
-            rows.iter()
-                .map(|row| {
-                    let mut new_row: [&[u8]; N1] = [&[]; N1];
-                    new_row[0..N0].copy_from_slice(row);
-                    new_row[N0] = value;
-                    new_row
-                })
-                .for_each(|row| {
-                    map.entry(row[new_key])
-                        .and_modify(|vec: &mut SmallVec<SV<_>>| vec.push(row))
-                        .or_insert(SmallVec::<SV<_>>::from_slice(&[row]));
-                });
-        });
-    map
-}
-
-fn write_output<W: Write>(
-    data: &FxHashMap<&[u8], SmallVec<SV<[&[u8]; 5]>>>,
+fn write_output<'a, W: Write>(
     writer: &mut BufWriter<W>,
+    abc: Vec<(&[u8], [SmallVec<SV<CsvField<'a>>>; 3])>,
+    d_map: FxHashMap<CsvField<'a>, SmallVec<SV<CsvField<'a>>>>,
 ) {
-    data.values()
-        .map(IntoIterator::into_iter)
-        .flatten()
-        .for_each(|v| {
-            writer.write_all(&v[3]).unwrap();
-            writer.write(b",").unwrap();
-            writer.write_all(&v[0]).unwrap();
-            writer.write(b",").unwrap();
-            writer.write_all(&v[1]).unwrap();
-            writer.write(b",").unwrap();
-            writer.write_all(&v[2]).unwrap();
-            writer.write(b",").unwrap();
-            writer.write_all(&v[4]).unwrap();
-            writer.write(b"\n").unwrap();
+    abc.into_iter().for_each(|(key, vec)| {
+        let a_cols2 = &vec[0];
+        let b_cols2 = &vec[1];
+        let c_cols2 = &vec[2];
+        c_cols2.into_iter().for_each(|c_col2| {
+            if let Some(d_cols2) = d_map.get(c_col2) {
+                d_cols2.into_iter().for_each(|d_col2| {
+                    a_cols2.into_iter().for_each(|a_col2| {
+                        b_cols2.into_iter().for_each(|b_col2| {
+                            writer.write_all(&c_col2).unwrap();
+                            writer.write(b",").unwrap();
+                            writer.write_all(key).unwrap();
+                            writer.write(b",").unwrap();
+                            writer.write_all(&a_col2).unwrap();
+                            writer.write(b",").unwrap();
+                            writer.write_all(&b_col2).unwrap();
+                            writer.write(b",").unwrap();
+                            writer.write_all(&d_col2).unwrap();
+                            writer.write(b"\n").unwrap();
+                        });
+                    });
+                });
+            }
         });
+    });
 
     writer.flush().unwrap();
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let mut map = FxHashMap::with_capacity_and_hasher(7000000, Default::default());
+    let mut abc_map = FxHashMap::with_capacity_and_hasher(2500000, Default::default());
 
     let mut reader = open_reader(&args[1]);
     stream_data(&mut reader).for_each(|(key, value)| {
-        map.entry(key)
-            .and_modify(|vec: &mut SmallVec<SV<_>>| vec.push([key, value]))
-            .or_insert(SmallVec::<SV<_>>::from_slice(&[[key, value]]));
+        abc_map
+            .entry(key)
+            .and_modify(|vec: &mut SmallVec<SV3<SmallVec<SV<_>>>>| vec[0].push(value))
+            .or_insert_with(|| {
+                let mut sv = SmallVec::with_capacity(3);
+                sv.push(SmallVec::from_slice(&[value]));
+                sv.push(SmallVec::new_const());
+                sv.push(SmallVec::new_const());
+                sv
+            });
     });
 
     let mut reader = open_reader(&args[2]);
-    let map = join::<2, 3>(map, stream_data(&mut reader), 0);
+    stream_data(&mut reader).for_each(|(key, value)| {
+        abc_map.entry(key).and_modify(|vec| vec[1].push(value));
+    });
 
     let mut reader = open_reader(&args[3]);
-    let map = join::<3, 4>(map, stream_data(&mut reader), 3);
+    stream_data(&mut reader).for_each(|(key, value)| {
+        abc_map.entry(key).and_modify(|vec| vec[2].push(value));
+    });
+    let abc_map = abc_map
+        .into_iter()
+        .filter(|(_, v)| v.len() == 3)
+        .map(|(key, value)| (key, value.into_inner().unwrap()))
+        .collect();
 
+    let mut d_map = FxHashMap::with_capacity_and_hasher(2500000, Default::default());
     let mut reader = open_reader(&args[4]);
-    let map = join::<4, 5>(map, stream_data(&mut reader), 0);
+    stream_data(&mut reader).for_each(|(key, value)| {
+        d_map
+            .entry(key)
+            .and_modify(|vec: &mut SmallVec<SV<_>>| vec.push(value))
+            .or_insert(SmallVec::from_slice(&[value]));
+    });
 
     // Write output
     let stdout = stdout();
     let mut writer = BufWriter::new(stdout.lock());
-    write_output(&map, &mut writer);
+    write_output(&mut writer, abc_map, d_map);
 }
