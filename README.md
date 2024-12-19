@@ -11,7 +11,7 @@ Download dataset and extract into `data` directory.
 Commands to benchmark on g0. (scp only works like this if you have ssh setup with config)
 
 ```sh
-cargo build --release
+RUSTFLAGS='-C target-cpu=icelake-client' cargo build -r
 scp ./target/x86_64-unknown-linux-musl/release/TUW-EP g0.complang.tuwien.ac.at:~
 
 ssh g0.complang.tuwien.ac.at
@@ -20,10 +20,10 @@ cd /localtmp/efficient24
 LC_NUMERIC=en_US perf stat -e cycles ~/TUW-EP f1.csv f2.csv f3.csv f4.csv|cat >/dev/null
 ```
 
-Commands to run locally.
+Commands to run locally. Replace znver3 with your own CPU architecture.
 
 ```sh
-cargo run --release data/a.csv data/b.csv data/c.csv data/d.csv | sort | diff - data/abcd.csv
+RUSTFLAGS='-C target-cpu=znver3' cargo run --release data/a.csv data/b.csv data/c.csv data/d.csv | sort | diff - data/abcd.csv
 ```
 
 # Benchmarks

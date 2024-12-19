@@ -1,11 +1,15 @@
+#![feature(portable_simd)]
 use fxhash::FxHashMap;
 use memmap2::Mmap;
 use mimalloc::MiMalloc;
+use simd_csv_reader::IntoCsvReader;
 use smallvec::SmallVec;
 use std::fs::File;
 use std::io::stdout;
 use std::io::BufWriter;
 use std::io::Write;
+
+mod simd_csv_reader;
 
 // a.csv 1-1 b.csv
 //             1
@@ -26,12 +30,7 @@ fn open_reader(file: &str) -> Mmap {
 }
 
 fn stream_data<'a>(data: &'a Mmap) -> impl Iterator<Item = (CsvField<'a>, CsvField<'a>)> {
-    data.split(|&b| b == b'\n')
-        .filter(|row| !row.is_empty())
-        .map(|row| {
-            let mut iter = row.splitn(2, |&b| b == b',');
-            (iter.next().unwrap(), iter.next().unwrap())
-        })
+    data.parse_csv()
 }
 
 fn write_output<'a, W: Write>(
