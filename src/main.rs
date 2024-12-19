@@ -1,3 +1,5 @@
+#![feature(portable_simd)]
+use field::CsvField;
 use fxhash::FxHashMap;
 use mimalloc::MiMalloc;
 use smallvec::SmallVec;
@@ -8,6 +10,8 @@ use std::io::BufWriter;
 use std::io::Read;
 use std::io::Write;
 
+mod field;
+
 // a.csv 1-1 b.csv
 //             1
 //             |
@@ -17,7 +21,6 @@ use std::io::Write;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-type CsvField<'a> = &'a [u8];
 type SvAbc<T> = [T; 3];
 type SvMultiValue<T> = [T; 2];
 
@@ -30,20 +33,27 @@ fn open_reader(file: &str) -> Vec<u8> {
     buffer
 }
 
-fn stream_data<'a>(data: &'a Vec<u8>) -> impl Iterator<Item = (CsvField<'a>, CsvField<'a>)> {
+fn stream_data(data: &Vec<u8>) -> impl Iterator<Item = (CsvField, CsvField)> + '_ {
     data.split(|&b| b == b'\n')
         .filter(|row| !row.is_empty())
         .map(|row| {
             let mut iter = row.splitn(2, |&b| b == b',');
-            (iter.next().unwrap(), iter.next().unwrap())
+
+            (
+                CsvField::from_slice(iter.next().unwrap()),
+                CsvField::from_slice(iter.next().unwrap()),
+            )
         })
 }
 
-fn write_output<'a, W: Write>(
+fn write_output<W: Write>(
     writer: &mut BufWriter<W>,
-    abc: FxHashMap<CsvField<'a>, SmallVec<SvAbc<SmallVec<SvMultiValue<CsvField<'a>>>>>>,
-    d_map: FxHashMap<CsvField<'a>, SmallVec<SvMultiValue<CsvField<'a>>>>,
+    abc: FxHashMap<CsvField, SmallVec<SvAbc<SmallVec<SvMultiValue<CsvField>>>>>,
+    d_map: FxHashMap<CsvField, SmallVec<SvMultiValue<CsvField>>>,
 ) {
+    // Pre-allocate output buffer
+    let mut output = Vec::with_capacity(256);
+
     abc.iter()
         .filter(|(_, vec)| vec.len() == 3)
         .map(|(key, abc_cols2)| (key, &abc_cols2[0], &abc_cols2[1], &abc_cols2[2]))
@@ -62,16 +72,20 @@ fn write_output<'a, W: Write>(
                 })
         })
         .for_each(|(abc_col1, a_col2, b_col2, c_col2, d_col2)| {
-            writer.write_all(c_col2).unwrap();
-            writer.write(b",").unwrap();
-            writer.write_all(abc_col1).unwrap();
-            writer.write(b",").unwrap();
-            writer.write_all(a_col2).unwrap();
-            writer.write(b",").unwrap();
-            writer.write_all(b_col2).unwrap();
-            writer.write(b",").unwrap();
-            writer.write_all(d_col2).unwrap();
-            writer.write(b"\n").unwrap();
+            output.clear();
+
+            c_col2.write_trimmed(&mut output);
+            output.push(b',');
+            abc_col1.write_trimmed(&mut output);
+            output.push(b',');
+            a_col2.write_trimmed(&mut output);
+            output.push(b',');
+            b_col2.write_trimmed(&mut output);
+            output.push(b',');
+            d_col2.write_trimmed(&mut output);
+            output.push(b'\n');
+
+            writer.write_all(&output).unwrap();
         });
 }
 
