@@ -216,3 +216,9 @@
 ```
     40,229,900,000      cycles
 ```
+
+# find multiple indices at once
+
+```
+    39,113,100,000      cycles
+```

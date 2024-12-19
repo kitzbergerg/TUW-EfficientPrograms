@@ -1,96 +1,75 @@
 use std::{
     collections::VecDeque,
-    simd::{cmp::SimdPartialEq, u8x64, LaneCount, Mask, Simd, SupportedLaneCount},
-    slice::ChunksExact,
+    simd::{cmp::SimdPartialEq, u8x64, Simd},
 };
 
 use crate::CsvField;
 
 const CHUNK_SIZE: usize = 64;
-const QUEUE_CAPACITY: usize = 64;
+const QUEUE_CAPACITY: usize = 128;
 
 pub struct SimdCsvReader<'a> {
-    data: &'a [u8],
-    chunks: ChunksExact<'a, u8>,
-    i: usize,
+    /// Indicates whether the csv was fully loaded
     done: bool,
+
+    /// The underlying data
+    data: &'a [u8],
 
     simd_newline: Simd<u8, CHUNK_SIZE>,
     simd_comma: Simd<u8, CHUNK_SIZE>,
 
-    idx_newline: VecDeque<usize>,
-    idx_comma: VecDeque<usize>,
-    prev: usize,
+    result: VecDeque<&'a [u8]>,
 }
 
 impl<'a> SimdCsvReader<'a> {
     fn new(data: &'a [u8]) -> Self {
         SimdCsvReader {
             data,
-            chunks: data.chunks_exact(CHUNK_SIZE),
-            i: 0,
             done: false,
             simd_newline: Simd::splat(b'\n'),
             simd_comma: Simd::splat(b','),
-            idx_newline: VecDeque::with_capacity(QUEUE_CAPACITY),
-            idx_comma: VecDeque::with_capacity(QUEUE_CAPACITY),
-            prev: 0,
+            result: VecDeque::with_capacity(QUEUE_CAPACITY),
         }
     }
 
-    fn get_indices<const N: usize>(mask: &mut Mask<i8, N>, result: &mut VecDeque<usize>, i: usize)
-    where
-        LaneCount<N>: SupportedLaneCount,
-    {
-        let num_matches = mask.to_bitmask().count_ones() as usize;
-        for _ in 0..num_matches {
-            let idx = mask.to_bitmask().trailing_zeros() as usize;
-            result.push_back(i * CHUNK_SIZE + idx);
-            mask.set(idx, false);
+    fn find_next_delimiters(&mut self, chunk: &'a [u8]) {
+        let simd = u8x64::from_slice(chunk);
+        let mask_comma = simd.simd_eq(self.simd_comma).to_bitmask();
+        let mask_newline = simd.simd_eq(self.simd_newline).to_bitmask();
+
+        // zeroes indicate a comma or newline
+        let mut combined = mask_comma | mask_newline;
+
+        let mut prev = 0;
+        while combined != 0 {
+            let i = combined.trailing_zeros() as usize;
+            self.result.push_back(&self.data[prev..i]);
+            prev = i + 1;
+            combined = combined - (1 << i);
         }
+        self.data = &self.data[prev..];
     }
 
-    fn find_next_delimiter(
-        chunk: &'a [u8],
-        splat: Simd<u8, CHUNK_SIZE>,
-        result: &mut VecDeque<usize>,
-        i: usize,
-    ) {
-        let mut mask = u8x64::from_slice(chunk).simd_eq(splat);
-        SimdCsvReader::get_indices(&mut mask, result, i)
-    }
-
-    fn process_remainder(remainder: &[u8], delimiter: u8, result: &mut VecDeque<usize>, i: usize) {
+    fn process_remainder(&mut self, remainder: &[u8]) {
+        let mut prev = 0;
         remainder
             .iter()
             .enumerate()
-            .filter(|(_, &el)| el == delimiter)
-            .for_each(|(idx, _)| result.push_back(i * CHUNK_SIZE + idx));
+            .filter(|(_, &el)| el == b',' || el == b'\n')
+            .for_each(|(i, _)| {
+                self.result.push_back(&self.data[prev..i]);
+                prev = i + 1;
+            });
+        self.data = &self.data[prev..];
     }
 
     fn fill_queue(&mut self) {
-        while self.idx_newline.len() < QUEUE_CAPACITY {
-            if let Some(chunk) = self.chunks.next() {
-                SimdCsvReader::find_next_delimiter(
-                    chunk,
-                    self.simd_comma,
-                    &mut self.idx_comma,
-                    self.i,
-                );
-                SimdCsvReader::find_next_delimiter(
-                    chunk,
-                    self.simd_newline,
-                    &mut self.idx_newline,
-                    self.i,
-                );
-                self.i += 1;
-            } else if !self.done {
-                let remainder = self.chunks.remainder();
-                Self::process_remainder(remainder, b',', &mut self.idx_comma, self.i);
-                Self::process_remainder(remainder, b'\n', &mut self.idx_newline, self.i);
-                self.done = true;
+        while self.result.len() < QUEUE_CAPACITY && !self.done {
+            if self.data.len() >= CHUNK_SIZE {
+                self.find_next_delimiters(&self.data[..CHUNK_SIZE]);
             } else {
-                return;
+                self.process_remainder(self.data);
+                self.done = true;
             }
         }
     }
@@ -101,20 +80,13 @@ impl<'a> Iterator for SimdCsvReader<'a> {
 
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
-        if self.idx_newline.is_empty() {
+        if self.result.len() < 2 {
             self.fill_queue();
         }
 
-        // check for newline first, otherwise it might fails
-        if let (Some(newline), Some(comma)) =
-            (self.idx_newline.pop_front(), self.idx_comma.pop_front())
-        {
-            let result = (&self.data[self.prev..comma], &self.data[comma + 1..newline]);
-            self.prev = newline + 1;
-            Some(result)
-        } else {
-            None
-        }
+        self.result
+            .pop_front()
+            .map(|field1| (field1, self.result.pop_front().unwrap()))
     }
 }
 
