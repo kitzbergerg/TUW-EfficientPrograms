@@ -12,6 +12,9 @@ pub struct SimdCsvReader<'a> {
     queue: VecDeque<(CsvField<'a>, CsvField<'a>)>,
     data: &'a [u8],
     current_pos: usize,
+
+    simd_newline: Simd<u8, 64>,
+    simd_comma: Simd<u8, 64>,
 }
 
 impl<'a> SimdCsvReader<'a> {
@@ -20,18 +23,25 @@ impl<'a> SimdCsvReader<'a> {
             queue: VecDeque::with_capacity(QUEUE_CAPACITY),
             data,
             current_pos: 0,
+            simd_newline: Simd::splat(b'\n'),
+            simd_comma: Simd::splat(b','),
         }
     }
 
     #[inline(always)]
-    fn find_next_delimiter(&self, start: usize, delimiter: u8) -> Option<usize> {
+    fn find_next_delimiter(
+        &self,
+        start: usize,
+        splat: Simd<u8, 64>,
+        delimiter: u8,
+    ) -> Option<usize> {
         let remaining = &self.data[start..];
         let chunks = remaining.chunks_exact(CHUNK_SIZE);
         let remainder = chunks.remainder();
 
         for (i, chunk) in chunks.enumerate() {
             let v = u8x64::from_slice(chunk);
-            let mask = v.simd_eq(Simd::splat(delimiter));
+            let mask = v.simd_eq(splat);
             if !mask.all() {
                 let idx = mask.to_bitmask().trailing_zeros();
                 return Some(start + i * CHUNK_SIZE + idx as usize);
@@ -47,20 +57,22 @@ impl<'a> SimdCsvReader<'a> {
     #[inline(always)]
     fn process_chunk(&mut self) -> bool {
         let chunk_start = self.current_pos;
-        let Some(newline_pos) = self.find_next_delimiter(chunk_start, b'\n') else {
+        let Some(newline_pos) = self.find_next_delimiter(chunk_start, self.simd_newline, b'\n')
+        else {
             return false;
         };
 
-        let line = &self.data[chunk_start..newline_pos];
-        if line.is_empty() {
+        if chunk_start == newline_pos {
             self.current_pos = newline_pos + 1;
             return true;
         }
 
-        if let Some(comma_pos) = line.iter().position(|&b| b == b',') {
-            let field1 = &line[..comma_pos];
-            let field2 = &line[comma_pos + 1..];
-            self.queue.push_back((field1, field2));
+        if let Some(comma_pos) = self.find_next_delimiter(chunk_start, self.simd_comma, b',') {
+            if comma_pos < newline_pos {
+                let field1 = &self.data[chunk_start..comma_pos];
+                let field2 = &self.data[comma_pos + 1..newline_pos];
+                self.queue.push_back((field1, field2));
+            }
         }
 
         self.current_pos = newline_pos + 1;

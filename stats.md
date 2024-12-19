@@ -210,3 +210,9 @@
 ```
     42,097,700,000      cycles
 ```
+
+# use simd for comma detection
+
+```
+    40,229,900,000      cycles
+```
