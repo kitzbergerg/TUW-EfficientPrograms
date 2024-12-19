@@ -7,6 +7,7 @@ name = "TUW-EP"
 version = "0.1.0"
 dependencies = [
  "fxhash",
+ "memmap2",
  "mimalloc",
  "smallvec",
 ]
@@ -48,6 +49,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23aa6811d3bd4deb8a84dde645f943476d13b248d818edcf8ce0b2f37f036b44"
 dependencies = [
  "cc",
+ "libc",
+]
+
+[[package]]
+name = "memmap2"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd3f7eed9d3848f8b98834af67102b720745c4ec028fcd0aa0239277e7de374f"
+dependencies = [
  "libc",
 ]
 

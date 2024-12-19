@@ -1,11 +1,10 @@
 use fxhash::FxHashMap;
+use memmap2::Mmap;
 use mimalloc::MiMalloc;
 use smallvec::SmallVec;
 use std::fs::File;
 use std::io::stdout;
-use std::io::BufReader;
 use std::io::BufWriter;
-use std::io::Read;
 use std::io::Write;
 
 // a.csv 1-1 b.csv
@@ -21,16 +20,12 @@ type CsvField<'a> = &'a [u8];
 type SvAbc<T> = [T; 3];
 type SvMultiValue<T> = [T; 2];
 
-fn open_reader(file: &str) -> Vec<u8> {
+fn open_reader(file: &str) -> Mmap {
     let file = File::open(file).unwrap();
-    let mut reader = BufReader::with_capacity(256 * 1024, file);
-    let mut buffer = Vec::with_capacity(300 * 1024 * 1024);
-
-    reader.read_to_end(&mut buffer).unwrap();
-    buffer
+    unsafe { Mmap::map(&file).unwrap() }
 }
 
-fn stream_data<'a>(data: &'a Vec<u8>) -> impl Iterator<Item = (CsvField<'a>, CsvField<'a>)> {
+fn stream_data<'a>(data: &'a Mmap) -> impl Iterator<Item = (CsvField<'a>, CsvField<'a>)> {
     data.split(|&b| b == b'\n')
         .filter(|row| !row.is_empty())
         .map(|row| {
