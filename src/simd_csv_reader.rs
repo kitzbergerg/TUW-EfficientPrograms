@@ -1,6 +1,6 @@
 use std::{
     collections::VecDeque,
-    simd::{cmp::SimdPartialEq, u8x64, Simd},
+    simd::{Simd, cmp::SimdPartialEq, u8x64},
 };
 
 use crate::CsvField;
@@ -50,7 +50,7 @@ impl<'a> SimdCsvReader<'a> {
         remainder
             .iter()
             .enumerate()
-            .filter(|(_, &el)| el == b',' || el == b'\n')
+            .filter(|(_, el)| *el == &b',' || *el == &b'\n')
             .for_each(|(i, _)| {
                 self.result.push_back(&self.data[prev..i]);
                 prev = i + 1;

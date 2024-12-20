@@ -1,40 +1,54 @@
+use std::ops::BitXor;
 
-// src/hash.rs
-include!("codegen.rs");
+use byteorder::{ByteOrder, NativeEndian};
+
+const ROTATE: u32 = 5;
+const SEED64: u64 = 0x517cc1b727220a95;
+const SEED32: u32 = (SEED64 & 0xFFFF_FFFF) as u32;
+
+trait HashWord {
+    fn hash_word(&mut self, word: Self);
+}
+
+macro_rules! impl_hash_word {
+    ($($ty:ty = $key:ident),* $(,)*) => (
+        $(
+            impl HashWord for $ty {
+                #[inline]
+                fn hash_word(&mut self, word: Self) {
+                    *self = self.rotate_left(ROTATE).bitxor(word).wrapping_mul($key);
+                }
+            }
+        )*
+    )
+}
+impl_hash_word!(u32 = SEED32, u64 = SEED64);
 
 #[inline(always)]
-pub fn compute_hash(bytes: &[u8]) -> u64 {
-    let len = bytes.len();
-    let mut hash = 0u64;
-    
-    // Process two bytes at a time
-    unsafe {
-        let ptr = bytes.as_ptr();
-        let chunks = len / 2;
-        
-        for i in 0..chunks {
-            let chunk_ptr = ptr.add(i * 2);
-            let two_bytes = u16::from_ne_bytes(*chunk_ptr.cast::<[u8; 2]>());
-            let value = *TWO_BYTE_VALUES.get_unchecked(two_bytes as usize) as u64;
-            hash += value * *CHUNK_MULTIPLIERS.get_unchecked(i);
-        }
-        
-        // Handle remaining byte if length is odd
-        if len % 2 != 0 {
-            let last_byte = *ptr.add(len - 1);
-            let char_index = *CHAR_TO_INDEX.get_unchecked(last_byte as usize) as u64;
-            hash += char_index * *SINGLE_MULTIPLIERS.get_unchecked(0);
-        }
+pub fn compute_hash(mut hash: u64, mut bytes: &[u8]) -> u64 {
+    while bytes.len() >= 8 {
+        let n = NativeEndian::read_u64(bytes);
+        hash.hash_word(n);
+        bytes = bytes.split_at(8).1;
     }
-    
+
+    if bytes.len() >= 4 {
+        let n = NativeEndian::read_u32(bytes);
+        hash.hash_word(n as u64);
+        bytes = bytes.split_at(4).1;
+    }
+
+    for byte in bytes {
+        hash.hash_word(*byte as u64);
+    }
     hash
 }
 
-pub struct CompileTimeHasher {
+pub struct MyHasher {
     state: u64,
 }
 
-impl std::hash::Hasher for CompileTimeHasher {
+impl std::hash::Hasher for MyHasher {
     #[inline(always)]
     fn finish(&self) -> u64 {
         self.state
@@ -42,25 +56,20 @@ impl std::hash::Hasher for CompileTimeHasher {
 
     #[inline(always)]
     fn write(&mut self, bytes: &[u8]) {
-        self.state = compute_hash(bytes);
+        self.state = compute_hash(self.state, bytes);
     }
 }
 
 #[derive(Default)]
-pub struct CompileTimeHasherBuilder;
+pub struct MyHasherBuilder;
 
-impl std::hash::BuildHasher for CompileTimeHasherBuilder {
-    type Hasher = CompileTimeHasher;
+impl std::hash::BuildHasher for MyHasherBuilder {
+    type Hasher = MyHasher;
 
     #[inline(always)]
-    fn build_hasher(&self) -> CompileTimeHasher {
-        CompileTimeHasher { state: 0 }
+    fn build_hasher(&self) -> MyHasher {
+        MyHasher { state: 0 }
     }
 }
 
-pub type PrecomputedHashMap<K, V> = std::collections::HashMap<K, V, CompileTimeHasherBuilder>;
-
-#[inline(always)]
-pub fn new_precomputed_hashmap<K, V>(capacity: usize) -> PrecomputedHashMap<K, V> {
-    PrecomputedHashMap::with_capacity_and_hasher(capacity, CompileTimeHasherBuilder)
-}
+pub type MyHashMap<K, V> = std::collections::HashMap<K, V, MyHasherBuilder>;

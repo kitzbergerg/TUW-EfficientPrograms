@@ -1,5 +1,5 @@
 #![feature(portable_simd)]
-use hash::new_precomputed_hashmap;
+use hash::MyHashMap;
 use memmap2::Mmap;
 use mimalloc::MiMalloc;
 use simd_csv_reader::IntoCsvReader;
@@ -69,8 +69,8 @@ fn write_output<'a, W: Write, S: BuildHasher>(
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    let mut abc_map = new_precomputed_hashmap(2500000);
-    let mut d_map = new_precomputed_hashmap(2500000);
+    let mut abc_map = MyHashMap::with_capacity_and_hasher(2500000, Default::default());
+    let mut d_map = MyHashMap::with_capacity_and_hasher(2500000, Default::default());
 
     let mut reader1 = open_reader(&args[1]);
     let mut reader2 = open_reader(&args[2]);
