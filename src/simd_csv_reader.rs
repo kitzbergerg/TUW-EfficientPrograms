@@ -8,16 +8,14 @@ use crate::CsvField;
 const CHUNK_SIZE: usize = 64;
 const QUEUE_CAPACITY: usize = 128;
 
-pub struct SimdCsvReader<'a> {
-    /// Indicates whether the csv was fully loaded
-    done: bool,
+const SIMD_NEWLINE: Simd<u8, CHUNK_SIZE> = Simd::from_array([b'\n'; CHUNK_SIZE]);
+const SIMD_COMMA: Simd<u8, CHUNK_SIZE> = Simd::from_array([b','; CHUNK_SIZE]);
 
-    /// The underlying data
+pub struct SimdCsvReader<'a> {
+    /// The remaining data to be processed
     data: &'a [u8],
 
-    simd_newline: Simd<u8, CHUNK_SIZE>,
-    simd_comma: Simd<u8, CHUNK_SIZE>,
-
+    /// The resulting fields of the CSV
     result: VecDeque<&'a [u8]>,
 }
 
@@ -25,17 +23,14 @@ impl<'a> SimdCsvReader<'a> {
     fn new(data: &'a [u8]) -> Self {
         SimdCsvReader {
             data,
-            done: false,
-            simd_newline: Simd::splat(b'\n'),
-            simd_comma: Simd::splat(b','),
             result: VecDeque::with_capacity(QUEUE_CAPACITY),
         }
     }
 
-    fn find_next_delimiters(&mut self, chunk: &'a [u8]) {
+    fn process_simd(&mut self, chunk: &'a [u8]) {
         let simd = u8x64::from_slice(chunk);
-        let mask_comma = simd.simd_eq(self.simd_comma).to_bitmask();
-        let mask_newline = simd.simd_eq(self.simd_newline).to_bitmask();
+        let mask_comma = simd.simd_eq(SIMD_NEWLINE).to_bitmask();
+        let mask_newline = simd.simd_eq(SIMD_COMMA).to_bitmask();
 
         // zeroes indicate a comma or newline
         let mut combined = mask_comma | mask_newline;
@@ -64,12 +59,11 @@ impl<'a> SimdCsvReader<'a> {
     }
 
     fn fill_queue(&mut self) {
-        while self.result.len() < QUEUE_CAPACITY && !self.done {
+        while self.result.len() < QUEUE_CAPACITY && !self.data.is_empty() {
             if self.data.len() >= CHUNK_SIZE {
-                self.find_next_delimiters(&self.data[..CHUNK_SIZE]);
+                self.process_simd(&self.data[..CHUNK_SIZE]);
             } else {
                 self.process_remainder(self.data);
-                self.done = true;
             }
         }
     }

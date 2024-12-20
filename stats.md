@@ -222,3 +222,9 @@
 ```
     39,113,100,000      cycles
 ```
+
+# make SIMD const, remove unnecessary variable
+
+```
+    38,693,073,444      cycles
+```
