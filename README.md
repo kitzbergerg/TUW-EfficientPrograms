@@ -20,10 +20,11 @@ cd /localtmp/efficient24
 LC_NUMERIC=en_US perf stat -e cycles ~/TUW-EP f1.csv f2.csv f3.csv f4.csv|cat >/dev/null
 ```
 
-Commands to run locally. Replace znver3 with your own CPU architecture.
+Commands to run locally.
 
 ```sh
-RUSTFLAGS='-C target-cpu=znver3' cargo run --release data/a.csv data/b.csv data/c.csv data/d.csv | sort | diff - data/abcd.csv
+RUSTFLAGS='-C target-cpu=native' cargo build -r
+./target/x86_64-unknown-linux-musl/release/TUW-EP data/f1.csv data/f2.csv data/f3.csv data/f4.csv | sort | diff - data/output.csv
 ```
 
 # Benchmarks

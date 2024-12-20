@@ -1,21 +1,18 @@
 #![feature(portable_simd)]
-use fxhash::FxHashMap;
+use hash::new_precomputed_hashmap;
 use memmap2::Mmap;
 use mimalloc::MiMalloc;
 use simd_csv_reader::IntoCsvReader;
 use smallvec::SmallVec;
+use std::collections::HashMap;
 use std::fs::File;
+use std::hash::BuildHasher;
 use std::io::stdout;
 use std::io::BufWriter;
 use std::io::Write;
 
+mod hash;
 mod simd_csv_reader;
-
-// a.csv 1-1 b.csv
-//             1
-//             |
-//             1
-// d.csv 1-2 c.csv
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -33,10 +30,10 @@ fn stream_data<'a>(data: &'a Mmap) -> impl Iterator<Item = (CsvField<'a>, CsvFie
     data.parse_csv()
 }
 
-fn write_output<'a, W: Write>(
+fn write_output<'a, W: Write, S: BuildHasher>(
     writer: &mut BufWriter<W>,
-    abc: FxHashMap<CsvField<'a>, SmallVec<SvAbc<SmallVec<SvMultiValue<CsvField<'a>>>>>>,
-    d_map: FxHashMap<CsvField<'a>, SmallVec<SvMultiValue<CsvField<'a>>>>,
+    abc: HashMap<CsvField<'a>, SmallVec<SvAbc<SmallVec<SvMultiValue<CsvField<'a>>>>>, S>,
+    d_map: HashMap<CsvField<'a>, SmallVec<SvMultiValue<CsvField<'a>>>, S>,
 ) {
     abc.iter()
         .filter(|(_, vec)| vec.len() == 3)
@@ -71,10 +68,16 @@ fn write_output<'a, W: Write>(
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let mut abc_map = FxHashMap::with_capacity_and_hasher(2500000, Default::default());
 
-    let mut reader = open_reader(&args[1]);
-    stream_data(&mut reader).for_each(|(key, value)| {
+    let mut abc_map = new_precomputed_hashmap(2500000);
+    let mut d_map = new_precomputed_hashmap(2500000);
+
+    let mut reader1 = open_reader(&args[1]);
+    let mut reader2 = open_reader(&args[2]);
+    let mut reader3 = open_reader(&args[3]);
+    let mut reader4 = open_reader(&args[4]);
+
+    stream_data(&mut reader1).for_each(|(key, value)| {
         abc_map
             .entry(key)
             .and_modify(|vec: &mut SmallVec<SvAbc<SmallVec<SvMultiValue<_>>>>| vec[0].push(value))
@@ -86,20 +89,13 @@ fn main() {
                 sv
             });
     });
-
-    let mut reader = open_reader(&args[2]);
-    stream_data(&mut reader).for_each(|(key, value)| {
+    stream_data(&mut reader2).for_each(|(key, value)| {
         abc_map.entry(key).and_modify(|vec| vec[1].push(value));
     });
-
-    let mut reader = open_reader(&args[3]);
-    stream_data(&mut reader).for_each(|(key, value)| {
+    stream_data(&mut reader3).for_each(|(key, value)| {
         abc_map.entry(key).and_modify(|vec| vec[2].push(value));
     });
-
-    let mut d_map = FxHashMap::with_capacity_and_hasher(2500000, Default::default());
-    let mut reader = open_reader(&args[4]);
-    stream_data(&mut reader).for_each(|(key, value)| {
+    stream_data(&mut reader4).for_each(|(key, value)| {
         d_map
             .entry(key)
             .and_modify(|vec: &mut SmallVec<SvMultiValue<_>>| vec.push(value))
