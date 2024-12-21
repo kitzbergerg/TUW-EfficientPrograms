@@ -12,7 +12,7 @@ d.csv 1-2 c.csv
 
 field length: 7-22 chars
 
-num unique fields: 9092825
+num unique fields: 9996607
 
 num unique bytes in fields: 37  
 unique bytes in fields: 0x0 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ (first is null byte; there are no spaces, just for visualization)
@@ -49,14 +49,14 @@ polars open data/f4.csv --no-header | polars select "column_2" | polars str-leng
 let f1_1 = (polars open data/f1.csv --no-header | polars select "column_1" | polars rename "column_1" "key")
 let f1_2 = (polars open data/f1.csv --no-header | polars select "column_2" | polars rename "column_2" "key")
 
-let f2_1 = (polars open data/f1.csv --no-header | polars select "column_1" | polars rename "column_1" "key")
-let f2_2 = (polars open data/f1.csv --no-header | polars select "column_2" | polars rename "column_2" "key")
+let f2_1 = (polars open data/f2.csv --no-header | polars select "column_1" | polars rename "column_1" "key")
+let f2_2 = (polars open data/f2.csv --no-header | polars select "column_2" | polars rename "column_2" "key")
 
-let f3_1 = (polars open data/f1.csv --no-header | polars select "column_1" | polars rename "column_1" "key")
-let f3_2 = (polars open data/f1.csv --no-header | polars select "column_2" | polars rename "column_2" "key")
+let f3_1 = (polars open data/f3.csv --no-header | polars select "column_1" | polars rename "column_1" "key")
+let f3_2 = (polars open data/f3.csv --no-header | polars select "column_2" | polars rename "column_2" "key")
 
-let f4_1 = (polars open data/f1.csv --no-header | polars select "column_1" | polars rename "column_1" "key")
-let f4_2 = (polars open data/f1.csv --no-header | polars select "column_2" | polars rename "column_2" "key")
+let f4_1 = (polars open data/f4.csv --no-header | polars select "column_1" | polars rename "column_1" "key")
+let f4_2 = (polars open data/f4.csv --no-header | polars select "column_2" | polars rename "column_2" "key")
 
 polars concat $f1_1 $f1_2 $f2_1 $f2_2 $f3_1 $f3_2 $f4_1 $f4_2 | polars n-unique
 ```

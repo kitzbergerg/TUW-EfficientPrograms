@@ -234,3 +234,9 @@
 ```
     36,743,373,444      cycles
 ```
+
+# increase map capacity
+
+```
+    35,189,973,444      cycles
+```
