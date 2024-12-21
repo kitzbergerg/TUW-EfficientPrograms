@@ -7,9 +7,9 @@ use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::fs::File;
 use std::hash::BuildHasher;
-use std::io::stdout;
 use std::io::BufWriter;
 use std::io::Write;
+use std::io::stdout;
 
 mod hash;
 mod simd_csv_reader;
@@ -26,7 +26,7 @@ fn open_reader(file: &str) -> Mmap {
     unsafe { Mmap::map(&file).unwrap() }
 }
 
-fn stream_data<'a>(data: &'a Mmap) -> impl Iterator<Item = (CsvField<'a>, CsvField<'a>)> {
+fn stream_data(data: &Mmap) -> impl Iterator<Item = (CsvField<'_>, CsvField<'_>)> {
     data.parse_csv()
 }
 
@@ -54,15 +54,15 @@ fn write_output<'a, W: Write, S: BuildHasher>(
         })
         .for_each(|(abc_col1, a_col2, b_col2, c_col2, d_col2)| {
             writer.write_all(c_col2).unwrap();
-            writer.write(b",").unwrap();
+            writer.write_all(b",").unwrap();
             writer.write_all(abc_col1).unwrap();
-            writer.write(b",").unwrap();
+            writer.write_all(b",").unwrap();
             writer.write_all(a_col2).unwrap();
-            writer.write(b",").unwrap();
+            writer.write_all(b",").unwrap();
             writer.write_all(b_col2).unwrap();
-            writer.write(b",").unwrap();
+            writer.write_all(b",").unwrap();
             writer.write_all(d_col2).unwrap();
-            writer.write(b"\n").unwrap();
+            writer.write_all(b"\n").unwrap();
         });
 }
 
@@ -72,12 +72,12 @@ fn main() {
     let mut abc_map = MyHashMap::with_capacity_and_hasher(5_000_000, Default::default());
     let mut d_map = MyHashMap::with_capacity_and_hasher(5_000_000, Default::default());
 
-    let mut reader1 = open_reader(&args[1]);
-    let mut reader2 = open_reader(&args[2]);
-    let mut reader3 = open_reader(&args[3]);
-    let mut reader4 = open_reader(&args[4]);
+    let reader1 = open_reader(&args[1]);
+    let reader2 = open_reader(&args[2]);
+    let reader3 = open_reader(&args[3]);
+    let reader4 = open_reader(&args[4]);
 
-    stream_data(&mut reader1).for_each(|(key, value)| {
+    stream_data(&reader1).for_each(|(key, value)| {
         abc_map
             .entry(key)
             .and_modify(|vec: &mut SmallVec<SvAbc<SmallVec<SvMultiValue<_>>>>| vec[0].push(value))
@@ -89,13 +89,13 @@ fn main() {
                 sv
             });
     });
-    stream_data(&mut reader2).for_each(|(key, value)| {
+    stream_data(&reader2).for_each(|(key, value)| {
         abc_map.entry(key).and_modify(|vec| vec[1].push(value));
     });
-    stream_data(&mut reader3).for_each(|(key, value)| {
+    stream_data(&reader3).for_each(|(key, value)| {
         abc_map.entry(key).and_modify(|vec| vec[2].push(value));
     });
-    stream_data(&mut reader4).for_each(|(key, value)| {
+    stream_data(&reader4).for_each(|(key, value)| {
         d_map
             .entry(key)
             .and_modify(|vec: &mut SmallVec<SvMultiValue<_>>| vec.push(value))

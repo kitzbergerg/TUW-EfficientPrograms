@@ -40,7 +40,7 @@ impl<'a> SimdCsvReader<'a> {
             let i = combined.trailing_zeros() as usize;
             self.result.push_back(&self.data[prev..i]);
             prev = i + 1;
-            combined = combined - (1 << i);
+            combined -= 1 << i;
         }
         self.data = &self.data[prev..];
     }
