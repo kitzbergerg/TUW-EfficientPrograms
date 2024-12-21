@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-fxhash = "0.2"
 smallvec = { version = "1.13", features = [
     "const_generics",
     "const_new",
@@ -13,4 +12,4 @@ smallvec = { version = "1.13", features = [
 ] }
 mimalloc = "0.1.43"
 memmap2 = "0.9"
-byteorder = "1.5"
+bytemuck = "1.21"

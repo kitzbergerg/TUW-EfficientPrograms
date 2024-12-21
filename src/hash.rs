@@ -1,47 +1,54 @@
-use std::ops::BitXor;
+use std::{
+    ops::Mul,
+    simd::{u8x4, u8x8, u8x16},
+};
 
-use byteorder::{ByteOrder, NativeEndian};
+use bytemuck::cast;
 
-const ROTATE: u32 = 5;
-const SEED64: u64 = 0x517cc1b727220a95;
-const SEED32: u32 = (SEED64 & 0xFFFF_FFFF) as u32;
-
-trait HashWord {
-    fn hash_word(&mut self, word: Self);
-}
-
-macro_rules! impl_hash_word {
-    ($($ty:ty = $key:ident),* $(,)*) => (
-        $(
-            impl HashWord for $ty {
-                #[inline]
-                fn hash_word(&mut self, word: Self) {
-                    *self = self.rotate_left(ROTATE).bitxor(word).wrapping_mul($key);
-                }
-            }
-        )*
-    )
-}
-impl_hash_word!(u32 = SEED32, u64 = SEED64);
+// Carefully chosen prime multipliers for good distribution
+const MULT_A: u64 = 0x517cc1b727220a95;
+const MULT_B: u64 = 0x9e3779b97f4a7c15;
 
 #[inline(always)]
-pub fn compute_hash(mut hash: u64, mut bytes: &[u8]) -> u64 {
-    while bytes.len() >= 8 {
-        let n = NativeEndian::read_u64(bytes);
-        hash.hash_word(n);
-        bytes = bytes.split_at(8).1;
-    }
+pub fn compute_hash(bytes: &[u8]) -> u64 {
+    // keys are 7-22 bytes long
+    if bytes.len() >= 16 {
+        let start = u8x16::from_array(bytes[..16].try_into().unwrap());
+        let end = u8x16::from_array(bytes[bytes.len() - 16..].try_into().unwrap());
+        // Mix using SIMD operations
+        let mixed = start
+            .rotate_elements_left::<3>()
+            .mul(end)
+            .rotate_elements_right::<5>();
 
-    if bytes.len() >= 4 {
-        let n = NativeEndian::read_u32(bytes);
-        hash.hash_word(n as u64);
-        bytes = bytes.split_at(4).1;
-    }
+        // Map to u64
+        let cast: [u64; 2] = cast(*mixed.as_array());
+        cast[0].wrapping_mul(MULT_A) ^ cast[1].wrapping_mul(MULT_B)
+    } else if bytes.len() >= 8 {
+        let start = u8x8::from_array(bytes[..8].try_into().unwrap());
+        let end = u8x8::from_array(bytes[bytes.len() - 8..].try_into().unwrap());
+        // Mix using SIMD operations
+        let mixed = start
+            .rotate_elements_left::<3>()
+            .mul(end)
+            .rotate_elements_right::<5>();
 
-    for byte in bytes {
-        hash.hash_word(*byte as u64);
+        // Map to u64
+        let cast: u64 = cast(*mixed.as_array());
+        cast.wrapping_mul(MULT_A)
+    } else {
+        let start = u8x4::from_array(bytes[..4].try_into().unwrap());
+        let end = u8x4::from_array(bytes[bytes.len() - 4..].try_into().unwrap());
+        // Mix using SIMD operations
+        let mixed = start
+            .rotate_elements_left::<3>()
+            .mul(end)
+            .rotate_elements_right::<5>();
+
+        // Map to u64
+        let cast: u32 = cast(*mixed.as_array());
+        (cast as u64).wrapping_mul(MULT_A)
     }
-    hash
 }
 
 pub struct MyHasher {
@@ -56,7 +63,7 @@ impl std::hash::Hasher for MyHasher {
 
     #[inline(always)]
     fn write(&mut self, bytes: &[u8]) {
-        self.state = compute_hash(self.state, bytes);
+        self.state = compute_hash(bytes);
     }
 }
 

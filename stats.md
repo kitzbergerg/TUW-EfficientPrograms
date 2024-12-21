@@ -228,3 +228,9 @@
 ```
     38,693,073,444      cycles
 ```
+
+# use SIMD for hashing
+
+```
+    36,743,373,444      cycles
+```
