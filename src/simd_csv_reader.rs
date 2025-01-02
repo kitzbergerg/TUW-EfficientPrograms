@@ -29,11 +29,11 @@ impl<'a> SimdCsvReader<'a> {
 
     fn process_simd(&mut self, chunk: &'a [u8]) {
         let simd = u8x64::from_slice(chunk);
-        let mask_comma = simd.simd_eq(SIMD_NEWLINE).to_bitmask();
-        let mask_newline = simd.simd_eq(SIMD_COMMA).to_bitmask();
+        let mask_newline = simd.simd_eq(SIMD_NEWLINE).to_bitmask();
+        let mask_comma = simd.simd_eq(SIMD_COMMA).to_bitmask();
 
         // zeroes indicate a comma or newline
-        let mut combined = mask_comma | mask_newline;
+        let mut combined = mask_newline | mask_comma;
 
         let mut prev = 0;
         while combined != 0 {
