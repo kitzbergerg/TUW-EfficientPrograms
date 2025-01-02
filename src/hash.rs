@@ -12,7 +12,7 @@ const MULT_B: u64 = 0x9e3779b97f4a7c15;
 #[inline(always)]
 pub fn compute_hash(bytes: &[u8]) -> u64 {
     // keys are 7-22 bytes long
-    if bytes.len() >= 16 {
+    if bytes.len() > 16 {
         let start = u8x16::from_array(bytes[..16].try_into().unwrap());
         let end = u8x16::from_array(bytes[bytes.len() - 16..].try_into().unwrap());
         // Mix using SIMD operations
@@ -24,7 +24,7 @@ pub fn compute_hash(bytes: &[u8]) -> u64 {
         // Map to u64
         let cast: [u64; 2] = cast(*mixed.as_array());
         cast[0].wrapping_mul(MULT_A) ^ cast[1].wrapping_mul(MULT_B)
-    } else if bytes.len() >= 8 {
+    } else if bytes.len() > 8 {
         let start = u8x8::from_array(bytes[..8].try_into().unwrap());
         let end = u8x8::from_array(bytes[bytes.len() - 8..].try_into().unwrap());
         // Mix using SIMD operations
