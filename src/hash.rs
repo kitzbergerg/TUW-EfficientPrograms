@@ -1,53 +1,42 @@
-use std::{
-    ops::Mul,
-    simd::{u8x4, u8x8, u8x16},
-};
-
-use bytemuck::cast;
+use std::ops::Mul;
 
 // Carefully chosen prime multipliers for good distribution
 const MULT_A: u64 = 0x517cc1b727220a95;
 const MULT_B: u64 = 0x9e3779b97f4a7c15;
 
+macro_rules! hash_simd {
+    ($bytes:expr, $size:expr, $t:ty) => {{
+        // SAFETY: If the slice is at least as long as $size bytes it can be reinterpreted as an actual array.
+        let start: [u8; $size] = *$bytes.as_ptr().cast();
+        let end: [u8; $size] = *$bytes.as_ptr().add($bytes.len() - $size).cast();
+
+        let start = std::simd::Simd::<u8, $size>::from_array(start);
+        let end = std::simd::Simd::<u8, $size>::from_array(end);
+
+        // Mix using SIMD operations
+        let mixed = start
+            .rotate_elements_left::<3>()
+            .mul(end)
+            .rotate_elements_right::<5>();
+
+        // SAFETY: assert at compile time that input and output have same size
+        const _: [(); 0 - !(size_of::<$t>() == size_of::<[u8; $size]>()) as usize] = [];
+        *(mixed.as_array().as_ptr().cast::<$t>())
+    }};
+}
+
 #[inline(always)]
 pub fn compute_hash(bytes: &[u8]) -> u64 {
     // keys are 7-22 bytes long
     if bytes.len() > 16 {
-        let start = u8x16::from_array(bytes[..16].try_into().unwrap());
-        let end = u8x16::from_array(bytes[bytes.len() - 16..].try_into().unwrap());
-        // Mix using SIMD operations
-        let mixed = start
-            .rotate_elements_left::<3>()
-            .mul(end)
-            .rotate_elements_right::<5>();
-
-        // Map to u64
-        let cast: [u64; 2] = cast(*mixed.as_array());
-        cast[0].wrapping_mul(MULT_A) ^ cast[1].wrapping_mul(MULT_B)
+        let result = unsafe { hash_simd!(bytes, 16, [u64; 2]) };
+        result[0].wrapping_mul(MULT_A) ^ result[1].wrapping_mul(MULT_B)
     } else if bytes.len() > 8 {
-        let start = u8x8::from_array(bytes[..8].try_into().unwrap());
-        let end = u8x8::from_array(bytes[bytes.len() - 8..].try_into().unwrap());
-        // Mix using SIMD operations
-        let mixed = start
-            .rotate_elements_left::<3>()
-            .mul(end)
-            .rotate_elements_right::<5>();
-
-        // Map to u64
-        let cast: u64 = cast(*mixed.as_array());
-        cast.wrapping_mul(MULT_A)
+        let result = unsafe { hash_simd!(bytes, 8, u64) };
+        result.wrapping_mul(MULT_A)
     } else {
-        let start = u8x4::from_array(bytes[..4].try_into().unwrap());
-        let end = u8x4::from_array(bytes[bytes.len() - 4..].try_into().unwrap());
-        // Mix using SIMD operations
-        let mixed = start
-            .rotate_elements_left::<3>()
-            .mul(end)
-            .rotate_elements_right::<5>();
-
-        // Map to u64
-        let cast: u32 = cast(*mixed.as_array());
-        (cast as u64).wrapping_mul(MULT_A)
+        let result = unsafe { hash_simd!(bytes, 4, u32) };
+        (result as u64).wrapping_mul(MULT_A)
     }
 }
 

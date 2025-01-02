@@ -12,4 +12,3 @@ smallvec = { version = "1.13", features = [
 ] }
 mimalloc = "0.1.43"
 memmap2 = "0.9"
-bytemuck = "1.21"
