@@ -20,7 +20,7 @@ macro_rules! hash_simd {
             .rotate_elements_right::<5>();
 
         // SAFETY: assert at compile time that input and output have same size
-        const _: [(); 0 - !(size_of::<$t>() == size_of::<[u8; $size]>()) as usize] = [];
+        const _: () = assert!(size_of::<$t>() == size_of::<[u8; $size]>());
         *(mixed.as_array().as_ptr().cast::<$t>())
     }};
 }

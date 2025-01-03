@@ -38,11 +38,12 @@ impl<'a> SimdCsvReader<'a> {
         let mut prev = 0;
         while combined != 0 {
             let i = combined.trailing_zeros() as usize;
-            self.result.push_back(&self.data[prev..i]);
+            self.result
+                .push_back(unsafe { self.data.get_unchecked(prev..i) });
             prev = i + 1;
             combined -= 1 << i;
         }
-        self.data = &self.data[prev..];
+        self.data = unsafe { self.data.get_unchecked(prev..) };
     }
 
     fn process_remainder(&mut self, remainder: &[u8]) {
