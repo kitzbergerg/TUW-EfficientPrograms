@@ -62,7 +62,10 @@ impl<'a> SimdCsvReader<'a> {
     fn fill_queue(&mut self) {
         while self.result.len() < QUEUE_CAPACITY && !self.data.is_empty() {
             if self.data.len() >= CHUNK_SIZE {
-                self.process_simd(&self.data[..CHUNK_SIZE]);
+                let chunk = unsafe {
+                    self.data.get_unchecked(..CHUNK_SIZE)
+                };
+                self.process_simd(chunk);
             } else {
                 self.process_remainder(self.data);
             }

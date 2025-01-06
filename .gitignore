@@ -2,3 +2,4 @@
 /data
 *.svg
 perf.data*
+.DS_store

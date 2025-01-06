@@ -39,16 +39,18 @@ fn write_output<'a, W: Write, S: BuildHasher>(
     abc.iter()
         .filter(|(_, vec)| vec.len() == 3)
         .flat_map(|(key, abc_cols2)| {
-            abc_cols2[2]
+            unsafe { abc_cols2.get_unchecked(2) }
                 .iter()
                 .filter_map(|c_col2| d_map.get(c_col2).zip(Some(c_col2)))
                 .flat_map(move |(d_cols2, c_col2)| {
                     d_cols2.iter().flat_map(move |d_col2| {
-                        abc_cols2[0].iter().flat_map(move |a_col2| {
-                            abc_cols2[1]
-                                .iter()
-                                .map(move |b_col2| (key, a_col2, b_col2, c_col2, d_col2))
-                        })
+                        unsafe {
+                            abc_cols2.get_unchecked(0).iter().flat_map(move |a_col2| {
+                                abc_cols2.get_unchecked(1)
+                                    .iter()
+                                    .map(move |b_col2| (key, a_col2, b_col2, c_col2, d_col2))
+                            })
+                        }
                     })
                 })
         })
@@ -80,7 +82,7 @@ fn main() {
     stream_data(&reader1).for_each(|(key, value)| {
         abc_map
             .entry(key)
-            .and_modify(|vec: &mut SV3<SV2<_>>| vec[0].push(value))
+            .and_modify(|vec: &mut SV3<SV2<_>>| unsafe { vec.get_unchecked_mut(0).push(value) })
             .or_insert({
                 let mut sv: SV3<SV2<_>> = smallvec![SmallVec::with_capacity(2); 3];
                 sv[0].push(value);
@@ -89,12 +91,12 @@ fn main() {
     });
     stream_data(&reader2).for_each(|(key, value)| {
         if let Some(vec) = abc_map.get_mut(key) {
-            vec[1].push(value);
+            unsafe { vec.get_unchecked_mut(1).push(value); }
         }
     });
     stream_data(&reader3).for_each(|(key, value)| {
         if let Some(vec) = abc_map.get_mut(key) {
-            vec[2].push(value);
+            unsafe { vec.get_unchecked_mut(2).push(value); }
         }
     });
     stream_data(&reader4).for_each(|(key, value)| {
