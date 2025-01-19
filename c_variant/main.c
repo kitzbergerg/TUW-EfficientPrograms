@@ -227,51 +227,29 @@ s32 item_parse(s8 *path, item *result) {
 
   __m512i comma = _mm512_set1_epi8(',');
   __m512i newline = _mm512_set1_epi8('\n');
-  __m512i index = _mm512_set1_epi32(0);
-  __m512i inc = _mm512_set1_epi32(64);
   __m512i range = _mm512_set_epi8(
       63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, 48, 47, 46,
       45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 29, 28,
       27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9,
       8, 7, 6, 5, 4, 3, 2, 1, 0);
 
+  u8 offsets[8];
   for (u32 i = 0; i < size; i += 64) {
     __m512i chunk = _mm512_loadu_epi8(file + i);
 
     u64 m = _mm512_cmpeq_epi8_mask(comma, chunk) |
             _mm512_cmpeq_epi8_mask(newline, chunk);
 
-    // Get relative positions (0-63) of matches
     __m512i hits = _mm512_maskz_mov_epi8(m, range);
 
-    // Since hits contains u8 we need to process in 4 parts to be able to add
-    // index which is u32
-    __m512i hits_0_15 = _mm512_add_epi32(
-        index, _mm512_cvtepi8_epi32(_mm512_extracti32x4_epi32(hits, 0)));
-    __m512i hits_16_31 = _mm512_add_epi32(
-        index, _mm512_cvtepi8_epi32(_mm512_extracti32x4_epi32(hits, 1)));
-    __m512i hits_32_47 = _mm512_add_epi32(
-        index, _mm512_cvtepi8_epi32(_mm512_extracti32x4_epi32(hits, 2)));
-    __m512i hits_48_63 = _mm512_add_epi32(
-        index, _mm512_cvtepi8_epi32(_mm512_extracti32x4_epi32(hits, 3)));
+    u32 count = _mm_popcnt_u64(m);
+    _mm512_mask_compressstoreu_epi8(offsets, m, hits);
 
-    // Get masks for each 16-byte section
-    u16 m0 = m & 0xFFFF;
-    u16 m1 = (m >> 16) & 0xFFFF;
-    u16 m2 = (m >> 32) & 0xFFFF;
-    u16 m3 = (m >> 48) & 0xFFFF;
+    for (u32 j = 0; j < count; j++) {
+      indices[stored + j] = offsets[j] + i;
+    }
 
-    // Store compressed results
-    _mm512_mask_compressstoreu_epi32(indices + stored, m0, hits_0_15);
-    stored += _mm_popcnt_u32(m0);
-    _mm512_mask_compressstoreu_epi32(indices + stored, m1, hits_16_31);
-    stored += _mm_popcnt_u32(m1);
-    _mm512_mask_compressstoreu_epi32(indices + stored, m2, hits_32_47);
-    stored += _mm_popcnt_u32(m2);
-    _mm512_mask_compressstoreu_epi32(indices + stored, m3, hits_48_63);
-    stored += _mm_popcnt_u32(m3);
-
-    index = _mm512_add_epi32(index, inc);
+    stored += count;
   }
 
   u32 count = 0;
