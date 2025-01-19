@@ -1,8 +1,9 @@
 #![feature(portable_simd)]
+#![feature(stdarch_x86_avx512)]
 use hash::MyHashMap;
 use memmap2::Mmap;
 use mimalloc::MiMalloc;
-use simd_csv_reader::IntoCsvReader;
+use simd_csv_reader::parse_csv;
 use smallvec::SmallVec;
 use smallvec::smallvec;
 use std::collections::HashMap;
@@ -22,13 +23,15 @@ type CsvField<'a> = &'a [u8];
 type SV2<T> = SmallVec<[T; 2]>;
 type SV3<T> = SmallVec<[T; 3]>;
 
+#[inline(always)]
 fn open_reader(file: &str) -> Mmap {
     let file = File::open(file).unwrap();
     unsafe { Mmap::map(&file).unwrap() }
 }
 
+#[inline(always)]
 fn stream_data(data: &Mmap) -> impl Iterator<Item = (CsvField<'_>, CsvField<'_>)> {
-    data.parse_csv()
+    parse_csv(data).into_iter()
 }
 
 fn write_output<'a, W: Write, S: BuildHasher>(

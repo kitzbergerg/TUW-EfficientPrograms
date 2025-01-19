@@ -1,17 +1,14 @@
+use bytemuck::cast;
 use std::ops::Mul;
 
-// Carefully chosen prime multipliers for good distribution
-const MULT_A: u64 = 0x517cc1b727220a95;
-const MULT_B: u64 = 0x9e3779b97f4a7c15;
+const SEED: u64 = 0x517cc1b727220a95;
 
 macro_rules! hash_simd {
-    ($bytes:expr, $size:expr, $t:ty) => {{
-        // SAFETY: If the slice is at least as long as $size bytes it can be reinterpreted as an actual array.
-        let start: [u8; $size] = *$bytes.as_ptr().cast();
-        let end: [u8; $size] = *$bytes.as_ptr().add($bytes.len() - $size).cast();
-
-        let start = std::simd::Simd::<u8, $size>::from_array(start);
-        let end = std::simd::Simd::<u8, $size>::from_array(end);
+    ($bytes:expr, $size:expr) => {{
+        let start = std::simd::Simd::<u8, $size>::from_array($bytes[..$size].try_into().unwrap());
+        let end = std::simd::Simd::<u8, $size>::from_array(
+            $bytes[$bytes.len() - $size..].try_into().unwrap(),
+        );
 
         // Mix using SIMD operations
         let mixed = start
@@ -19,9 +16,7 @@ macro_rules! hash_simd {
             .mul(end)
             .rotate_elements_right::<5>();
 
-        // SAFETY: assert at compile time that input and output have same size
-        const _: () = assert!(size_of::<$t>() == size_of::<[u8; $size]>());
-        *(mixed.as_array().as_ptr().cast::<$t>())
+        cast(*mixed.as_array())
     }};
 }
 
@@ -29,14 +24,13 @@ macro_rules! hash_simd {
 pub fn compute_hash(bytes: &[u8]) -> u64 {
     // keys are 7-22 bytes long
     if bytes.len() > 16 {
-        let result = unsafe { hash_simd!(bytes, 16, [u64; 2]) };
-        result[0].wrapping_mul(MULT_A) ^ result[1].wrapping_mul(MULT_B)
+        let result: [u64; 2] = hash_simd!(bytes, 16);
+        (result[0] ^ result[1]) * SEED
     } else if bytes.len() > 8 {
-        let result = unsafe { hash_simd!(bytes, 8, u64) };
-        result.wrapping_mul(MULT_A)
+        let result: u64 = hash_simd!(bytes, 8);
+        result * SEED
     } else {
-        let result = unsafe { hash_simd!(bytes, 4, u32) };
-        (result as u64).wrapping_mul(MULT_A)
+        bytes.iter().fold(0, |acc, &b| (acc ^ (b as u64)) * SEED)
     }
 }
 
