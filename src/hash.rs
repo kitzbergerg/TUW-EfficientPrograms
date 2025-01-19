@@ -1,37 +1,28 @@
-use bytemuck::cast;
-use std::ops::Mul;
-
 const SEED: u64 = 0x517cc1b727220a95;
-
-macro_rules! hash_simd {
-    ($bytes:expr, $size:expr) => {{
-        let start = std::simd::Simd::<u8, $size>::from_array($bytes[..$size].try_into().unwrap());
-        let end = std::simd::Simd::<u8, $size>::from_array(
-            $bytes[$bytes.len() - $size..].try_into().unwrap(),
-        );
-
-        // Mix using SIMD operations
-        let mixed = start
-            .rotate_elements_left::<3>()
-            .mul(end)
-            .rotate_elements_right::<5>();
-
-        cast(*mixed.as_array())
-    }};
-}
 
 #[inline(always)]
 pub fn compute_hash(bytes: &[u8]) -> u64 {
     // keys are 7-22 bytes long
-    if bytes.len() > 16 {
-        let result: [u64; 2] = hash_simd!(bytes, 16);
-        (result[0] ^ result[1]) * SEED
+    let r = if bytes.len() > 16 {
+        let s0 = u128::from_ne_bytes(bytes[..16].try_into().unwrap());
+        let s1 = u128::from_ne_bytes(bytes[bytes.len() - 16..].try_into().unwrap());
+        let r = s0 * s1;
+        (r as u64) ^ ((r >> 64) as u64)
     } else if bytes.len() > 8 {
-        let result: u64 = hash_simd!(bytes, 8);
-        result * SEED
+        let s0 = u64::from_ne_bytes(bytes[..8].try_into().unwrap());
+        let s1 = u64::from_ne_bytes(bytes[bytes.len() - 8..].try_into().unwrap());
+        s0 ^ s1
+    } else if bytes.len() > 4 {
+        let s0 = u32::from_ne_bytes(bytes[..4].try_into().unwrap()) as u64;
+        let s1 = u32::from_ne_bytes(bytes[bytes.len() - 4..].try_into().unwrap()) as u64;
+        (s0 << 32) | s1
     } else {
-        bytes.iter().fold(0, |acc, &b| (acc ^ (b as u64)) * SEED)
-    }
+        let s0 = bytes[0] as u64;
+        let s1 = bytes[bytes.len() / 2] as u64;
+        let s2 = bytes[bytes.len() - 1] as u64;
+        (s0 << 16) | (s1 << 8) | s2
+    };
+    r.wrapping_mul(SEED)
 }
 
 pub struct MyHasher {

@@ -26,8 +26,8 @@ pub fn parse_csv(data: &[u8]) -> Vec<(CsvField<'_>, CsvField<'_>)> {
         .iter()
         .enumerate()
         .filter(|(_, el)| *el == &b',' || *el == &b'\n')
-        .for_each(|(idx, _)| {
-            indices.push(pos + idx);
+        .for_each(|(i, _)| {
+            indices.push(pos + i);
         });
 
     let mut pairs = Vec::with_capacity(indices.len() / 2 + 1);
