@@ -32,7 +32,7 @@ impl<'a> SimdCsvReader<'a> {
         let mask_newline = simd.simd_eq(SIMD_NEWLINE).to_bitmask();
         let mask_comma = simd.simd_eq(SIMD_COMMA).to_bitmask();
 
-        // zeroes indicate a comma or newline
+        // ones indicate a comma or newline
         let mut combined = mask_newline | mask_comma;
 
         let mut prev = 0;
