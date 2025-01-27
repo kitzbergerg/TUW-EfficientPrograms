@@ -44,8 +44,8 @@ fn write_output<'a, W: Write, S: BuildHasher>(
                 .filter_map(|c_col2| d_map.get(c_col2).zip(Some(c_col2)))
                 .flat_map(move |(d_cols2, c_col2)| {
                     d_cols2.iter().flat_map(move |d_col2| {
-                        abc_cols2[0].iter().flat_map(move |a_col2| {
-                            abc_cols2[1]
+                        abc_cols2[1].iter().flat_map(move |a_col2| {
+                            abc_cols2[0]
                                 .iter()
                                 .map(move |b_col2| (key, a_col2, b_col2, c_col2, d_col2))
                         })
@@ -77,7 +77,7 @@ fn main() {
     let reader3 = open_reader(&args[3]);
     let reader4 = open_reader(&args[4]);
 
-    stream_data(&reader1).for_each(|(key, value)| {
+    stream_data(&reader2).for_each(|(key, value)| {
         abc_map
             .entry(key)
             .and_modify(|vec: &mut SV3<SV2<_>>| vec[0].push(value))
@@ -87,7 +87,7 @@ fn main() {
                 sv
             });
     });
-    stream_data(&reader2).for_each(|(key, value)| {
+    stream_data(&reader1).for_each(|(key, value)| {
         if let Some(vec) = abc_map.get_mut(key) {
             vec[1].push(value);
         }
