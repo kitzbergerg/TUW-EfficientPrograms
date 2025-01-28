@@ -36,34 +36,28 @@ fn write_output<'a, W: Write, S: BuildHasher>(
     abc: &HashMap<CsvField<'a>, SV3<SV2<CsvField<'a>>>, S>,
     d_map: &HashMap<CsvField<'a>, SV2<CsvField<'a>>, S>,
 ) {
-    abc.iter()
-        .filter(|(_, vec)| vec.len() == 3)
-        .flat_map(|(key, abc_cols2)| {
-            abc_cols2[2]
-                .iter()
-                .filter_map(|c_col2| d_map.get(c_col2).zip(Some(c_col2)))
-                .flat_map(move |(d_cols2, c_col2)| {
-                    d_cols2.iter().flat_map(move |d_col2| {
-                        abc_cols2[1].iter().flat_map(move |a_col2| {
-                            abc_cols2[0]
-                                .iter()
-                                .map(move |b_col2| (key, a_col2, b_col2, c_col2, d_col2))
-                        })
-                    })
-                })
-        })
-        .for_each(|(abc_col1, a_col2, b_col2, c_col2, d_col2)| {
-            writer.write_all(c_col2).unwrap();
-            writer.write_all(b",").unwrap();
-            writer.write_all(abc_col1).unwrap();
-            writer.write_all(b",").unwrap();
-            writer.write_all(a_col2).unwrap();
-            writer.write_all(b",").unwrap();
-            writer.write_all(b_col2).unwrap();
-            writer.write_all(b",").unwrap();
-            writer.write_all(d_col2).unwrap();
-            writer.write_all(b"\n").unwrap();
-        });
+    for (key, [a_cols2, b_cols2, c_cols2]) in abc {
+        for c_col2 in c_cols2 {
+            if let Some(d_cols2) = d_map.get(c_col2) {
+                for d_col2 in d_cols2 {
+                    for b_col2 in b_cols2 {
+                        for a_col2 in a_cols2 {
+                            writer.write_all(c_col2).unwrap();
+                            writer.write_all(b",").unwrap();
+                            writer.write_all(key).unwrap();
+                            writer.write_all(b",").unwrap();
+                            writer.write_all(a_col2).unwrap();
+                            writer.write_all(b",").unwrap();
+                            writer.write_all(b_col2).unwrap();
+                            writer.write_all(b",").unwrap();
+                            writer.write_all(d_col2).unwrap();
+                            writer.write_all(b"\n").unwrap();
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn main() {
