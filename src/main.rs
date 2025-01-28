@@ -1,8 +1,9 @@
 #![feature(portable_simd)]
+#![feature(stdarch_x86_avx512)]
 use hash::MyHashMap;
 use memmap2::Mmap;
 use mimalloc::MiMalloc;
-use simd_csv_reader::IntoCsvReader;
+use simd_csv_reader::parse_csv;
 use smallvec::SmallVec;
 use smallvec::smallvec;
 use std::collections::HashMap;
@@ -18,23 +19,22 @@ mod simd_csv_reader;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-type CsvField<'a> = &'a [u8];
+type Field<'a> = &'a [u8];
 type SV2<T> = SmallVec<[T; 2]>;
-type SV3<T> = SmallVec<[T; 3]>;
 
 fn open_reader(file: &str) -> Mmap {
     let file = File::open(file).unwrap();
     unsafe { Mmap::map(&file).unwrap() }
 }
 
-fn stream_data(data: &Mmap) -> impl Iterator<Item = (CsvField<'_>, CsvField<'_>)> {
-    data.parse_csv()
+fn stream_data(data: &Mmap) -> impl Iterator<Item = (Field<'_>, Field<'_>)> {
+    parse_csv(data).into_iter()
 }
 
 fn write_output<'a, W: Write, S: BuildHasher>(
     writer: &mut BufWriter<W>,
-    abc: &HashMap<CsvField<'a>, SV3<SV2<CsvField<'a>>>, S>,
-    d_map: &HashMap<CsvField<'a>, SV2<CsvField<'a>>, S>,
+    abc: &HashMap<Field<'a>, [SV2<Field<'a>>; 3], S>,
+    d_map: &HashMap<Field<'a>, SV2<Field<'a>>, S>,
 ) {
     for (key, [a_cols2, b_cols2, c_cols2]) in abc {
         for c_col2 in c_cols2 {
@@ -74,16 +74,20 @@ fn main() {
     stream_data(&reader2).for_each(|(key, value)| {
         abc_map
             .entry(key)
-            .and_modify(|vec: &mut SV3<SV2<_>>| vec[0].push(value))
+            .and_modify(|vec: &mut [SV2<_>; 3]| vec[1].push(value))
             .or_insert({
-                let mut sv: SV3<SV2<_>> = smallvec![SmallVec::with_capacity(2); 3];
-                sv[0].push(value);
+                let mut sv: [SV2<_>; 3] = [
+                    SmallVec::with_capacity(2),
+                    SmallVec::with_capacity(2),
+                    SmallVec::with_capacity(2),
+                ];
+                sv[1].push(value);
                 sv
             });
     });
     stream_data(&reader1).for_each(|(key, value)| {
         if let Some(vec) = abc_map.get_mut(key) {
-            vec[1].push(value);
+            vec[0].push(value);
         }
     });
     stream_data(&reader3).for_each(|(key, value)| {

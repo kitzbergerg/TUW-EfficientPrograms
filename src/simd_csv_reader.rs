@@ -1,97 +1,93 @@
-use std::{
-    collections::VecDeque,
-    simd::{Simd, cmp::SimdPartialEq, u8x64},
-};
+use std::simd::{Simd, cmp::SimdPartialEq, u8x64};
 
-use crate::CsvField;
+use crate::Field;
 
 const CHUNK_SIZE: usize = 64;
-const QUEUE_CAPACITY: usize = 128;
 
 const SIMD_NEWLINE: Simd<u8, CHUNK_SIZE> = Simd::from_array([b'\n'; CHUNK_SIZE]);
 const SIMD_COMMA: Simd<u8, CHUNK_SIZE> = Simd::from_array([b','; CHUNK_SIZE]);
 
-pub struct SimdCsvReader<'a> {
-    /// The remaining data to be processed
+pub fn parse_csv(data: &[u8]) -> Vec<(Field<'_>, Field<'_>)> {
+    let mut fields: Vec<Field<'_>> = Vec::with_capacity(data.len() / 8);
+    let mut pos = 0;
+    let mut prev = 0;
+    while pos + CHUNK_SIZE < data.len() {
+        let simd = u8x64::from_slice(unsafe { data.get_unchecked(pos..pos + CHUNK_SIZE) });
+        let combined = simd.simd_eq(SIMD_NEWLINE) | simd.simd_eq(SIMD_COMMA);
+        let combined = combined.to_bitmask();
+
+        find_indices(data, &mut fields, &mut prev, pos, combined);
+
+        pos += CHUNK_SIZE;
+    }
+    data[pos..]
+        .iter()
+        .enumerate()
+        .filter(|(_, el)| *el == &b',' || *el == &b'\n')
+        .for_each(|(i, _)| {
+            let field = unsafe { data.get_unchecked(prev..pos + i) };
+            fields.push(field);
+            prev = pos + i + 1;
+        });
+
+    let mut pairs = Vec::with_capacity(fields.len() / 2 + 1);
+    let mut iter = fields.into_iter();
+    while let (Some(f1), Some(f2)) = (iter.next(), iter.next()) {
+        pairs.push((f1, f2));
+    }
+
+    pairs
+}
+
+#[cfg(not(target_feature = "avx512f"))]
+#[inline(always)]
+fn find_indices<'a>(
     data: &'a [u8],
-
-    /// The resulting fields of the CSV
-    result: VecDeque<&'a [u8]>,
-}
-
-impl<'a> SimdCsvReader<'a> {
-    fn new(data: &'a [u8]) -> Self {
-        SimdCsvReader {
-            data,
-            result: VecDeque::with_capacity(QUEUE_CAPACITY),
-        }
-    }
-
-    fn process_simd(&mut self, chunk: &'a [u8]) {
-        let simd = u8x64::from_slice(chunk);
-        let mask_newline = simd.simd_eq(SIMD_NEWLINE).to_bitmask();
-        let mask_comma = simd.simd_eq(SIMD_COMMA).to_bitmask();
-
-        // ones indicate a comma or newline
-        let mut combined = mask_newline | mask_comma;
-
-        let mut prev = 0;
-        while combined != 0 {
-            let i = combined.trailing_zeros() as usize;
-            self.result
-                .push_back(unsafe { self.data.get_unchecked(prev..i) });
-            prev = i + 1;
-            combined -= 1 << i;
-        }
-        self.data = unsafe { self.data.get_unchecked(prev..) };
-    }
-
-    fn process_remainder(&mut self, remainder: &[u8]) {
-        let mut prev = 0;
-        remainder
-            .iter()
-            .enumerate()
-            .filter(|(_, el)| *el == &b',' || *el == &b'\n')
-            .for_each(|(i, _)| {
-                self.result.push_back(&self.data[prev..i]);
-                prev = i + 1;
-            });
-        self.data = &self.data[prev..];
-    }
-
-    fn fill_queue(&mut self) {
-        while self.result.len() < QUEUE_CAPACITY && !self.data.is_empty() {
-            if self.data.len() >= CHUNK_SIZE {
-                self.process_simd(&self.data[..CHUNK_SIZE]);
-            } else {
-                self.process_remainder(self.data);
-            }
-        }
+    fields: &mut Vec<Field<'a>>,
+    prev: &mut usize,
+    pos: usize,
+    mut combined: u64,
+) {
+    while combined != 0 {
+        let i = combined.trailing_zeros() as usize;
+        let current_pos = pos + i;
+        let field = unsafe { data.get_unchecked(*prev..current_pos) };
+        fields.push(field);
+        *prev = current_pos + 1;
+        combined -= 1 << i;
     }
 }
 
-impl<'a> Iterator for SimdCsvReader<'a> {
-    type Item = (CsvField<'a>, CsvField<'a>);
-
-    #[inline(always)]
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.result.len() < 2 {
-            self.fill_queue();
+#[cfg(target_feature = "avx512f")]
+#[inline(always)]
+fn find_indices<'a>(
+    data: &'a [u8],
+    fields: &mut Vec<Field<'a>>,
+    prev: &mut usize,
+    pos: usize,
+    combined: u64,
+) {
+    const RANGE: Simd<u8, CHUNK_SIZE> = {
+        let mut tmp = [0u8; CHUNK_SIZE];
+        let mut i = 0u8;
+        while i < CHUNK_SIZE as u8 {
+            tmp[i as usize] = i;
+            i += 1;
         }
+        Simd::from_array(tmp)
+    };
 
-        self.result
-            .pop_front()
-            .map(|field1| (field1, self.result.pop_front().unwrap()))
+    let mut offsets = [0u8; CHUNK_SIZE];
+    unsafe {
+        let hits = std::arch::x86_64::_mm512_maskz_mov_epi8(combined, RANGE.into());
+        std::arch::x86_64::_mm512_mask_compressstoreu_epi8(offsets.as_mut_ptr(), combined, hits);
     }
-}
-
-pub trait IntoCsvReader<'a> {
-    fn parse_csv(self) -> SimdCsvReader<'a>;
-}
-
-impl<'a> IntoCsvReader<'a> for &'a [u8] {
-    fn parse_csv(self) -> SimdCsvReader<'a> {
-        SimdCsvReader::new(self)
+    for i in 0..combined.count_ones() {
+        let i = offsets[i as usize] as usize;
+        let current_pos = pos + i;
+        let field = unsafe { data.get_unchecked(*prev..current_pos) };
+        fields.push(field);
+        *prev = current_pos + 1;
     }
 }
 
@@ -101,13 +97,12 @@ mod tests {
 
     #[test]
     fn test_csv_reader() {
-        let data = b"field1,value1\nf2,v2\nfield3,value3\n";
-        let reader = data.as_slice().parse_csv();
-        let results: Vec<_> = reader.collect();
+        let data = b"field1,value1\nfield2,value2\nfield3,value3\n";
+        let results = parse_csv(data.as_slice());
 
         assert_eq!(results.len(), 3);
         assert_eq!(results[0], (b"field1".as_slice(), b"value1".as_slice()));
-        assert_eq!(results[1], (b"f2".as_slice(), b"v2".as_slice()));
+        assert_eq!(results[1], (b"field2".as_slice(), b"value2".as_slice()));
         assert_eq!(results[2], (b"field3".as_slice(), b"value3".as_slice()));
     }
 }
