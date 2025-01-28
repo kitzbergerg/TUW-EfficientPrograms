@@ -1,5 +1,7 @@
 #![feature(portable_simd)]
 #![feature(stdarch_x86_avx512)]
+#![feature(array_chunks)]
+#![feature(iter_array_chunks)]
 use hash::MyHashMap;
 use memmap2::Mmap;
 use mimalloc::MiMalloc;
@@ -27,8 +29,8 @@ fn open_reader(file: &str) -> Mmap {
     unsafe { Mmap::map(&file).unwrap() }
 }
 
-fn stream_data(data: &Mmap) -> impl Iterator<Item = (Field<'_>, Field<'_>)> {
-    parse_csv(data).into_iter()
+fn stream_data(data: &[u8]) -> impl Iterator<Item = [Field<'_>; 2]> {
+    parse_csv(data).into_iter().array_chunks()
 }
 
 fn write_output<'a, W: Write, S: BuildHasher>(
@@ -71,7 +73,7 @@ fn main() {
     let reader3 = open_reader(&args[3]);
     let reader4 = open_reader(&args[4]);
 
-    stream_data(&reader2).for_each(|(key, value)| {
+    stream_data(&reader2).for_each(|[key, value]| {
         abc_map
             .entry(key)
             .and_modify(|vec: &mut [SV2<_>; 3]| vec[1].push(value))
@@ -85,17 +87,17 @@ fn main() {
                 sv
             });
     });
-    stream_data(&reader1).for_each(|(key, value)| {
-        if let Some(vec) = abc_map.get_mut(key) {
+    stream_data(&reader1).for_each(|[key, value]| {
+        if let Some(vec) = abc_map.get_mut(&key) {
             vec[0].push(value);
         }
     });
-    stream_data(&reader3).for_each(|(key, value)| {
-        if let Some(vec) = abc_map.get_mut(key) {
+    stream_data(&reader3).for_each(|[key, value]| {
+        if let Some(vec) = abc_map.get_mut(&key) {
             vec[2].push(value);
         }
     });
-    stream_data(&reader4).for_each(|(key, value)| {
+    stream_data(&reader4).for_each(|[key, value]| {
         d_map
             .entry(key)
             .and_modify(|vec: &mut SV2<_>| vec.push(value))

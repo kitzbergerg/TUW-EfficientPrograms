@@ -1,4 +1,4 @@
-use std::simd::{Simd, cmp::SimdPartialEq, u8x64};
+use std::simd::{Mask, Simd, cmp::SimdPartialEq, u8x64};
 
 use crate::Field;
 
@@ -7,36 +7,29 @@ const CHUNK_SIZE: usize = 64;
 const SIMD_NEWLINE: Simd<u8, CHUNK_SIZE> = Simd::from_array([b'\n'; CHUNK_SIZE]);
 const SIMD_COMMA: Simd<u8, CHUNK_SIZE> = Simd::from_array([b','; CHUNK_SIZE]);
 
-pub fn parse_csv(data: &[u8]) -> Vec<(Field<'_>, Field<'_>)> {
+pub fn parse_csv(data: &[u8]) -> Vec<Field<'_>> {
     let mut fields: Vec<Field<'_>> = Vec::with_capacity(data.len() / 8);
-    let mut pos = 0;
     let mut prev = 0;
-    while pos + CHUNK_SIZE < data.len() {
-        let simd = u8x64::from_slice(unsafe { data.get_unchecked(pos..pos + CHUNK_SIZE) });
-        let combined = simd.simd_eq(SIMD_NEWLINE) | simd.simd_eq(SIMD_COMMA);
-        let combined = combined.to_bitmask();
-
-        find_indices(data, &mut fields, &mut prev, pos, combined);
-
-        pos += CHUNK_SIZE;
-    }
+    let mut pos = 0;
+    data.array_chunks()
+        .map(|chunk| u8x64::from_array(*chunk))
+        .map(|chunk| chunk.simd_eq(SIMD_NEWLINE) | chunk.simd_eq(SIMD_COMMA))
+        .map(Mask::to_bitmask)
+        .for_each(|mask| {
+            find_indices(data, &mut fields, &mut prev, pos, mask);
+            pos += CHUNK_SIZE
+        });
     data[pos..]
         .iter()
         .enumerate()
         .filter(|(_, el)| *el == &b',' || *el == &b'\n')
         .for_each(|(i, _)| {
-            let field = unsafe { data.get_unchecked(prev..pos + i) };
-            fields.push(field);
-            prev = pos + i + 1;
+            let current = pos + i;
+            let field = unsafe { data.get_unchecked(prev..current) };
+            fields.push(field.into());
+            prev = current + 1;
         });
-
-    let mut pairs = Vec::with_capacity(fields.len() / 2 + 1);
-    let mut iter = fields.into_iter();
-    while let (Some(f1), Some(f2)) = (iter.next(), iter.next()) {
-        pairs.push((f1, f2));
-    }
-
-    pairs
+    fields
 }
 
 #[cfg(not(target_feature = "avx512f"))]
@@ -50,10 +43,10 @@ fn find_indices<'a>(
 ) {
     while combined != 0 {
         let i = combined.trailing_zeros() as usize;
-        let current_pos = pos + i;
-        let field = unsafe { data.get_unchecked(*prev..current_pos) };
-        fields.push(field);
-        *prev = current_pos + 1;
+        let current = pos + i;
+        let field = unsafe { data.get_unchecked(*prev..current) };
+        fields.push(field.into());
+        *prev = current + 1;
         combined -= 1 << i;
     }
 }
@@ -84,10 +77,10 @@ fn find_indices<'a>(
     }
     for i in 0..combined.count_ones() {
         let i = offsets[i as usize] as usize;
-        let current_pos = pos + i;
-        let field = unsafe { data.get_unchecked(*prev..current_pos) };
-        fields.push(field);
-        *prev = current_pos + 1;
+        let current = pos + i;
+        let field = unsafe { data.get_unchecked(*prev..current) };
+        fields.push(field.into());
+        *prev = current + 1;
     }
 }
 
@@ -100,9 +93,12 @@ mod tests {
         let data = b"field1,value1\nfield2,value2\nfield3,value3\n";
         let results = parse_csv(data.as_slice());
 
-        assert_eq!(results.len(), 3);
-        assert_eq!(results[0], (b"field1".as_slice(), b"value1".as_slice()));
-        assert_eq!(results[1], (b"field2".as_slice(), b"value2".as_slice()));
-        assert_eq!(results[2], (b"field3".as_slice(), b"value3".as_slice()));
+        assert_eq!(results.len(), 6);
+        assert_eq!(results[0], b"field1".as_slice());
+        assert_eq!(results[1], b"value1".as_slice());
+        assert_eq!(results[2], b"field2".as_slice());
+        assert_eq!(results[3], b"value2".as_slice());
+        assert_eq!(results[4], b"field3".as_slice());
+        assert_eq!(results[5], b"value3".as_slice());
     }
 }
