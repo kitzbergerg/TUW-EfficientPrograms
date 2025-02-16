@@ -11,5 +11,4 @@ smallvec = { version = "1.13", features = [
     "union",
     "specialization",
 ] }
-mimalloc = "0.1.43"
 memmap2 = "0.9"

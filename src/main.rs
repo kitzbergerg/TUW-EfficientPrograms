@@ -4,10 +4,11 @@
 #![feature(iter_array_chunks)]
 use hash::MyHashMap;
 use memmap2::Mmap;
-use mimalloc::MiMalloc;
 use simd_csv_reader::parse_csv;
 use smallvec::SmallVec;
 use smallvec::smallvec;
+use std::alloc::GlobalAlloc;
+use std::alloc::Layout;
 use std::collections::HashMap;
 use std::fs::File;
 use std::hash::BuildHasher;
@@ -18,8 +19,22 @@ use std::io::stdout;
 mod hash;
 mod simd_csv_reader;
 
+struct NoDealloc;
+
+unsafe impl GlobalAlloc for NoDealloc {
+    #[inline]
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        unsafe { std::alloc::System.alloc(layout) }
+    }
+
+    #[inline]
+    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
+        // No-op: We just run once, no need to dealloc
+    }
+}
+
 #[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
+static GLOBAL: NoDealloc = NoDealloc;
 
 type Field<'a> = &'a [u8];
 type SV2<T> = SmallVec<[T; 2]>;
@@ -77,11 +92,7 @@ fn main() {
         abc_map
             .entry(key)
             .and_modify(|vec: &mut [SV2<_>; 3]| vec[1].push(value))
-            .or_insert([
-                SmallVec::new(),
-                smallvec![value],
-                SmallVec::new()
-            ]);
+            .or_insert([SmallVec::new(), smallvec![value], SmallVec::new()]);
     });
     stream_data(&reader1).for_each(|[key, value]| {
         if let Some(vec) = abc_map.get_mut(&key) {
