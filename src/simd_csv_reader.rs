@@ -26,7 +26,7 @@ pub fn parse_csv(data: &[u8]) -> Vec<Field<'_>> {
         .for_each(|(i, _)| {
             let current = pos + i;
             let field = unsafe { data.get_unchecked(prev..current) };
-            fields.push(field.into());
+            fields.push(field);
             prev = current + 1;
         });
     fields
@@ -60,7 +60,7 @@ fn find_indices<'a>(
     pos: usize,
     combined: u64,
 ) {
-    const RANGE: Simd<u8, CHUNK_SIZE> = {
+    const RANGE: u8x64 = {
         let mut tmp = [0u8; CHUNK_SIZE];
         let mut i = 0u8;
         while i < CHUNK_SIZE as u8 {
@@ -70,11 +70,8 @@ fn find_indices<'a>(
         Simd::from_array(tmp)
     };
 
-    let mut offsets = [0u8; CHUNK_SIZE];
-    unsafe {
-        let hits = std::arch::x86_64::_mm512_maskz_mov_epi8(combined, RANGE.into());
-        std::arch::x86_64::_mm512_mask_compressstoreu_epi8(offsets.as_mut_ptr(), combined, hits);
-    }
+    let offsets: u8x64 =
+        unsafe { std::arch::x86_64::_mm512_maskz_compress_epi8(combined, RANGE.into()) }.into();
     for i in 0..combined.count_ones() {
         let i = offsets[i as usize] as usize;
         let current = pos + i;
