@@ -32,7 +32,7 @@ pub fn parse_csv(data: &[u8]) -> Vec<Field<'_>> {
     fields
 }
 
-#[cfg(not(target_feature = "avx512f"))]
+#[cfg(not(target_feature = "avx512vbmi2"))]
 #[inline(always)]
 fn find_indices<'a>(
     data: &'a [u8],
@@ -51,7 +51,7 @@ fn find_indices<'a>(
     }
 }
 
-#[cfg(target_feature = "avx512f")]
+#[cfg(target_feature = "avx512vbmi2")]
 #[inline(always)]
 fn find_indices<'a>(
     data: &'a [u8],
