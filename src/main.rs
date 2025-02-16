@@ -77,15 +77,11 @@ fn main() {
         abc_map
             .entry(key)
             .and_modify(|vec: &mut [SV2<_>; 3]| vec[1].push(value))
-            .or_insert({
-                let mut sv: [SV2<_>; 3] = [
-                    SmallVec::with_capacity(2),
-                    SmallVec::with_capacity(2),
-                    SmallVec::with_capacity(2),
-                ];
-                sv[1].push(value);
-                sv
-            });
+            .or_insert([
+                SmallVec::new(),
+                smallvec![value],
+                SmallVec::new()
+            ]);
     });
     stream_data(&reader1).for_each(|[key, value]| {
         if let Some(vec) = abc_map.get_mut(&key) {

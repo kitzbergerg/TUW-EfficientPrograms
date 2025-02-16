@@ -45,7 +45,7 @@ fn find_indices<'a>(
         let i = combined.trailing_zeros() as usize;
         let current = pos + i;
         let field = unsafe { data.get_unchecked(*prev..current) };
-        fields.push(field.into());
+        fields.push(field);
         *prev = current + 1;
         combined -= 1 << i;
     }
@@ -79,7 +79,7 @@ fn find_indices<'a>(
         let i = offsets[i as usize] as usize;
         let current = pos + i;
         let field = unsafe { data.get_unchecked(*prev..current) };
-        fields.push(field.into());
+        fields.push(field);
         *prev = current + 1;
     }
 }
