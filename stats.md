@@ -240,3 +240,9 @@
 ```
     35,189,973,444      cycles
 ```
+
+# remove musl target
+
+```
+    20,043,170,514      cycles
+```
