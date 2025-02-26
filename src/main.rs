@@ -3,6 +3,8 @@
 #![feature(array_chunks)]
 #![feature(iter_array_chunks)]
 use hash::MyHashMap;
+use mapper::map_to_bytes;
+use mapper::map_to_int;
 use memmap2::Mmap;
 use simd_csv_reader::parse_csv;
 use smallvec::SmallVec;
@@ -17,6 +19,7 @@ use std::io::Write;
 use std::io::stdout;
 
 mod hash;
+mod mapper;
 mod simd_csv_reader;
 
 struct NoDealloc;
@@ -44,19 +47,16 @@ fn open_reader(file: &str) -> Mmap {
     unsafe { Mmap::map(&file).unwrap() }
 }
 
-fn stream_data<'a>(
-    data: &'a [u8],
-    fields: &mut Vec<Field<'a>>,
-) -> impl Iterator<Item = [Field<'a>; 2]> {
+fn stream_data<'a>(data: &'a [u8], fields: &mut Vec<Field<'a>>) -> impl Iterator<Item = [u128; 2]> {
     fields.clear();
     parse_csv(data, fields);
-    fields.iter_mut().map(|x| *x).array_chunks()
+    fields.iter_mut().map(|x| map_to_int(x)).array_chunks()
 }
 
-fn write_output<'a, W: Write, S: BuildHasher>(
+fn write_output<W: Write, S: BuildHasher>(
     writer: &mut BufWriter<W>,
-    abc: &HashMap<Field<'a>, [SV2<Field<'a>>; 3], S>,
-    d_map: &HashMap<Field<'a>, SV2<Field<'a>>, S>,
+    abc: &HashMap<u128, [SV2<u128>; 3], S>,
+    d_map: &HashMap<u128, SV2<u128>, S>,
 ) {
     for (key, [a_cols2, b_cols2, c_cols2]) in abc {
         for c_col2 in c_cols2 {
@@ -64,15 +64,20 @@ fn write_output<'a, W: Write, S: BuildHasher>(
                 for d_col2 in d_cols2 {
                     for b_col2 in b_cols2 {
                         for a_col2 in a_cols2 {
-                            writer.write_all(c_col2).unwrap();
+                            let c_col2_b = map_to_bytes(*c_col2);
+                            writer.write_all(&c_col2_b.1[..c_col2_b.0]).unwrap();
                             writer.write_all(b",").unwrap();
-                            writer.write_all(key).unwrap();
+                            let key_b = map_to_bytes(*key);
+                            writer.write_all(&key_b.1[..key_b.0]).unwrap();
                             writer.write_all(b",").unwrap();
-                            writer.write_all(a_col2).unwrap();
+                            let a_col2_b = map_to_bytes(*a_col2);
+                            writer.write_all(&a_col2_b.1[..a_col2_b.0]).unwrap();
                             writer.write_all(b",").unwrap();
-                            writer.write_all(b_col2).unwrap();
+                            let b_col2_b = map_to_bytes(*b_col2);
+                            writer.write_all(&b_col2_b.1[..b_col2_b.0]).unwrap();
                             writer.write_all(b",").unwrap();
-                            writer.write_all(d_col2).unwrap();
+                            let d_col2_b = map_to_bytes(*d_col2);
+                            writer.write_all(&d_col2_b.1[..d_col2_b.0]).unwrap();
                             writer.write_all(b"\n").unwrap();
                         }
                     }
