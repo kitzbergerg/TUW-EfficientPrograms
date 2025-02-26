@@ -44,8 +44,13 @@ fn open_reader(file: &str) -> Mmap {
     unsafe { Mmap::map(&file).unwrap() }
 }
 
-fn stream_data(data: &[u8]) -> impl Iterator<Item = [Field<'_>; 2]> {
-    parse_csv(data).into_iter().array_chunks()
+fn stream_data<'a>(
+    data: &'a [u8],
+    fields: &mut Vec<Field<'a>>,
+) -> impl Iterator<Item = [Field<'a>; 2]> {
+    fields.clear();
+    parse_csv(data, fields);
+    fields.iter_mut().map(|x| *x).array_chunks()
 }
 
 fn write_output<'a, W: Write, S: BuildHasher>(
@@ -80,6 +85,7 @@ fn write_output<'a, W: Write, S: BuildHasher>(
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
+    let mut fields = Vec::with_capacity(10_000_000);
     let mut abc_map = MyHashMap::with_capacity_and_hasher(5_000_000, Default::default());
     let mut d_map = MyHashMap::with_capacity_and_hasher(5_000_000, Default::default());
 
@@ -88,23 +94,23 @@ fn main() {
     let reader3 = open_reader(&args[3]);
     let reader4 = open_reader(&args[4]);
 
-    stream_data(&reader2).for_each(|[key, value]| {
+    stream_data(&reader2, &mut fields).for_each(|[key, value]| {
         abc_map
             .entry(key)
             .and_modify(|vec: &mut [SV2<_>; 3]| vec[1].push(value))
             .or_insert([SmallVec::new(), smallvec![value], SmallVec::new()]);
     });
-    stream_data(&reader1).for_each(|[key, value]| {
+    stream_data(&reader1, &mut fields).for_each(|[key, value]| {
         if let Some(vec) = abc_map.get_mut(&key) {
             vec[0].push(value);
         }
     });
-    stream_data(&reader3).for_each(|[key, value]| {
+    stream_data(&reader3, &mut fields).for_each(|[key, value]| {
         if let Some(vec) = abc_map.get_mut(&key) {
             vec[2].push(value);
         }
     });
-    stream_data(&reader4).for_each(|[key, value]| {
+    stream_data(&reader4, &mut fields).for_each(|[key, value]| {
         d_map
             .entry(key)
             .and_modify(|vec: &mut SV2<_>| vec.push(value))

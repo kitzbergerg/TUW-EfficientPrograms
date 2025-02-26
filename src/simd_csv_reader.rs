@@ -7,8 +7,7 @@ const CHUNK_SIZE: usize = 64;
 const SIMD_NEWLINE: Simd<u8, CHUNK_SIZE> = Simd::from_array([b'\n'; CHUNK_SIZE]);
 const SIMD_COMMA: Simd<u8, CHUNK_SIZE> = Simd::from_array([b','; CHUNK_SIZE]);
 
-pub fn parse_csv(data: &[u8]) -> Vec<Field<'_>> {
-    let mut fields: Vec<Field<'_>> = Vec::with_capacity(data.len() / 8);
+pub fn parse_csv<'a>(data: &'a [u8], fields: &mut Vec<Field<'a>>) {
     let mut prev = 0;
     let mut pos = 0;
     data.array_chunks()
@@ -16,7 +15,7 @@ pub fn parse_csv(data: &[u8]) -> Vec<Field<'_>> {
         .map(|chunk| chunk.simd_eq(SIMD_NEWLINE) | chunk.simd_eq(SIMD_COMMA))
         .map(Mask::to_bitmask)
         .for_each(|mask| {
-            find_indices(data, &mut fields, &mut prev, pos, mask);
+            find_indices(data, fields, &mut prev, pos, mask);
             pos += CHUNK_SIZE
         });
     data[pos..]
@@ -29,7 +28,6 @@ pub fn parse_csv(data: &[u8]) -> Vec<Field<'_>> {
             fields.push(field);
             prev = current + 1;
         });
-    fields
 }
 
 #[cfg(not(target_feature = "avx512vbmi2"))]
@@ -47,7 +45,7 @@ fn find_indices<'a>(
         let field = unsafe { data.get_unchecked(*prev..current) };
         fields.push(field);
         *prev = current + 1;
-        combined -= 1 << i;
+        combined &= combined - 1;
     }
 }
 
@@ -88,7 +86,8 @@ mod tests {
     #[test]
     fn test_csv_reader() {
         let data = b"field1,value1\nfield2,value2\nfield3,value3\n";
-        let results = parse_csv(data.as_slice());
+        let mut results = Vec::new();
+        parse_csv(data.as_slice(), &mut results);
 
         assert_eq!(results.len(), 6);
         assert_eq!(results[0], b"field1".as_slice());
