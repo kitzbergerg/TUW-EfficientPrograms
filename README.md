@@ -9,17 +9,17 @@ Download dataset and extract into `data` directory.
 Commands to benchmark on g0 (needs rust and git repo).
 
 ```sh
-RUSTFLAGS='-C target-cpu=native' cargo build -r
+cargo build -r
 cp ./target/release/TUW-EP ~/TUW-EP
 
 cd /localtmp/efficient24
-LC_NUMERIC=en_US perf stat -e cycles ~/TUW-EP f1.csv f2.csv f3.csv f4.csv >/dev/null
+perf stat -e cycles ~/TUW-EP f1.csv f2.csv f3.csv f4.csv >/dev/null
 ```
 
 Commands to run locally.
 
 ```sh
-RUSTFLAGS='-C target-cpu=native' cargo build -r
+cargo build -r
 ./target/release/TUW-EP data/f1.csv data/f2.csv data/f3.csv data/f4.csv | sort | diff - data/output.csv
 ```
 
@@ -30,7 +30,7 @@ Benchmarks can be found [here](stats.md)
 To run 10 times and get the average cycles you can:
 
 ```
-NUMERIC=en_US seq 10 | xargs -Iz perf stat -e cycles ~/TUW-EP f1.csv f2.csv f3.csv f4.csv >/dev/null 2> >(grep "cycles" | sed -r 's/\.//g' | awk '{s+=$1;c++} END {print s/c}' >&2)
+seq 10 | xargs -Iz perf stat -e cycles ~/TUW-EP f1.csv f2.csv f3.csv f4.csv >/dev/null 2> >(grep "cycles" | sed -r 's/\.//g' | awk '{s+=$1;c++} END {print s/c}' >&2)
 ```
 
 # Tools
