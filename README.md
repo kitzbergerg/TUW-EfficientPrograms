@@ -19,8 +19,13 @@ perf stat -e cycles ~/TUW-EP f1.csv f2.csv f3.csv f4.csv >/dev/null
 Commands to run locally.
 
 ```sh
+sudo sysctl kernel.perf_event_paranoid=1
+sudo sysctl -w kernel.kptr_restrict=0
+
 cargo build -r
 ./target/release/TUW-EP data/f1.csv data/f2.csv data/f3.csv data/f4.csv | sort | diff - data/output.csv
+
+seq 10 | xargs -Iz perf stat -e cycles ./target/release/TUW-EP data/f1.csv data/f2.csv data/f3.csv data/f4.csv >/dev/null 2> >(grep "cycles" | sed -r 's/\.//g' | awk '{s+=$1;c++} END {print s/c}' >&2)
 ```
 
 # Benchmarks

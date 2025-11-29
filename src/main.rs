@@ -1,6 +1,4 @@
 #![feature(portable_simd)]
-#![feature(stdarch_x86_avx512)]
-#![feature(array_chunks)]
 #![feature(iter_array_chunks)]
 use hash::MyHashMap;
 use memmap2::Mmap;

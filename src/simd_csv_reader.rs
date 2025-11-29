@@ -10,7 +10,9 @@ const SIMD_COMMA: Simd<u8, CHUNK_SIZE> = Simd::from_array([b','; CHUNK_SIZE]);
 pub fn parse_csv<'a>(data: &'a [u8], fields: &mut Vec<Field<'a>>) {
     let mut prev = 0;
     let mut pos = 0;
-    data.array_chunks()
+    let (chunks, remainder) = data.as_chunks();
+    chunks
+        .iter()
         .map(|chunk| u8x64::from_array(*chunk))
         .map(|chunk| chunk.simd_eq(SIMD_NEWLINE) | chunk.simd_eq(SIMD_COMMA))
         .map(Mask::to_bitmask)
@@ -18,7 +20,7 @@ pub fn parse_csv<'a>(data: &'a [u8], fields: &mut Vec<Field<'a>>) {
             find_indices(data, fields, &mut prev, pos, mask);
             pos += CHUNK_SIZE
         });
-    data[pos..]
+    remainder
         .iter()
         .enumerate()
         .filter(|(_, el)| *el == &b',' || *el == &b'\n')
